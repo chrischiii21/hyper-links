@@ -31,6 +31,7 @@ export default function RichTextCopier() {
   const [links, setLinks] = useState<LinkData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
+  const [showDevNotice, setShowDevNotice] = useState(false);
 
   const extractLinks = (text: string) => {
     // Matches: (Source: Publisher, Year, URL)
@@ -100,7 +101,124 @@ export default function RichTextCopier() {
     setLinks([]); // Clear links when cleaning bullets
   };
 
+  const formatReport = () => {
+    setShowDevNotice(true);
+    setTimeout(() => setShowDevNotice(false), 3000);
+    return; // Locked for now
+    const sections = inputText.split(/\n(?=[IVX]+\. |Sources:)/);
+    let fullHtml = '<div class="space-y-12">';
+
+    const groupConfigs = [
+      { 
+        id: 'executive', 
+        label: 'EXECUTIVE SUMMARY & DEDALE TAKE',
+        patterns: ['Executive Summary'] 
+      },
+      { 
+        id: 'value', 
+        label: 'VALUE PROPOSITION',
+        patterns: ['Value Proposition', 'Product Overview', 'Business Model', 'Pricing Structure', 'Prices', 'Contract Length', 'Additional Important Note', 'Sources']
+      },
+      { 
+        id: 'ownership', 
+        label: 'OWNERSHIP & KEY MILESTONES',
+        patterns: ['Founding Details', 'Company Evolution', 'Strategic Milestones', 'Sources']
+      },
+      { 
+        id: 'customer_profiles', 
+        label: 'CUSTOMER PROFILES',
+        patterns: ['Customer Geography', 'Customer Size', 'Customer Industry', 'Buying Personas', 'Adoption Trigger', 'Key Purchasing Criteria', 'Sources']
+      },
+      { 
+        id: 'customer_feedback', 
+        label: 'CUSTOMER FEEDBACK',
+        patterns: ['Customer Level of Satisfaction', 'Customer ROI', 'Offering Strengths', 'Points of Improvement', 'Level of Criticality', 'Level of Stickiness', 'Sources']
+      },
+      { 
+        id: 'competition', 
+        label: 'COMPETITIVE LANDSCAPE',
+        patterns: ['Competitive Landscape', 'Sources']
+      },
+      { 
+        id: 'leadership', 
+        label: 'LEADERSHIP',
+        patterns: ['Leadership Summary', 'Leadership Team', 'Team Stability', 'Sources']
+      },
+      { 
+        id: 'sales_gtm', 
+        label: 'SALES & GO-TO-MARKET',
+        patterns: ['Sales Channels', 'Sales Organization', 'Go-To-Market Strategy', 'Sources']
+      },
+      { 
+        id: 'rd_tech', 
+        label: 'R&D & TECH',
+        patterns: ['Product Capability', 'R&D Capability', 'R&D Team', 'AI Development', 'Sources']
+      },
+      { 
+        id: 'market', 
+        label: 'MARKET CONTEXT',
+        patterns: ['Market Definition', 'Market Characteristics', 'Market Trends', 'Sources']
+      }
+    ];
+
+    const processedGroups: { label: string; html: string }[] = [];
+
+    // Helper to extract content under specific headers
+    const getSubSection = (text: string, subHeader: string) => {
+      const lines = text.split('\n');
+      let result = '';
+      let capturing = false;
+      
+      for (const line of lines) {
+        if (line.includes(subHeader)) {
+          capturing = true;
+          continue;
+        }
+        // If we hit another known subheader, stop (simplistic check)
+        if (capturing && /^[A-Z][a-z]+ [A-Z]/.test(line) && line.endsWith(':')) break; 
+        
+        if (capturing) result += line + '\n';
+      }
+      return result.trim();
+    };
+
+    groupConfigs.forEach(group => {
+      let groupHtml = `<div class="report-group border-l-4 border-blue-500 pl-6 py-2">`;
+      groupHtml += `<h2 class="text-blue-600 font-bold mb-4 tracking-wide text-sm">${group.label}</h2>`;
+      
+      let hasContent = false;
+      group.patterns.forEach(pattern => {
+        // Find matching section in the raw input
+        const match = sections.find(s => s.includes(pattern));
+        if (match) {
+          hasContent = true;
+          const cleanTitle = pattern === 'Sources' ? 'Sources' : pattern;
+          groupHtml += `<div class="mb-6"><h2 class="text-lg font-bold mb-2">${cleanTitle}</h2>`;
+          
+          // Basic bullet points conversion for report content
+          const contentLines = match.split('\n').slice(1);
+          groupHtml += '<div class="prose prose-sm"><ul>';
+          contentLines.forEach(line => {
+            const cleanLine = line.replace(/^[•\-\u2022\s\t*]+/, '').trim();
+            if (cleanLine) {
+              const formattedLine = cleanLine.replace(/^(.*?:\s)/, '<strong>$1</strong>');
+              groupHtml += `<li>${formattedLine}</li>`;
+            }
+          });
+          groupHtml += '</ul></div></div>';
+        }
+      });
+
+      groupHtml += '</div>';
+      if (hasContent) processedGroups.push({ label: group.label, html: groupHtml });
+    });
+
+    setOutputHtml(processedGroups.map(g => g.html).join('<hr class="my-8 border-gray-100" />'));
+    setLinks([]);
+  };
+
   const copyRichText = async () => {
+
     if (!outputHtml) return;
     
     try {
@@ -165,11 +283,11 @@ export default function RichTextCopier() {
             className="w-full h-80 p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none font-mono text-sm leading-relaxed"
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <button
               onClick={processLinks}
               disabled={!inputText || isLoading}
-              className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl font-medium transition-all shadow-lg shadow-blue-200"
+              className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl font-medium transition-all shadow-lg shadow-blue-200 text-sm"
             >
               {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
               Process Links
@@ -177,12 +295,37 @@ export default function RichTextCopier() {
             <button
               onClick={cleanBullets}
               disabled={!inputText || isLoading}
-              className="flex items-center justify-center gap-2 bg-gray-900 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl font-medium transition-all shadow-lg shadow-gray-200"
+              className="flex items-center justify-center gap-2 bg-gray-900 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl font-medium transition-all shadow-lg shadow-gray-200 text-sm"
             >
               <List className="w-4 h-4" />
               Clean Bullets
             </button>
+            <button
+              onClick={formatReport}
+              disabled={!inputText || isLoading}
+              className="relative flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-500 py-3 px-4 rounded-xl font-medium transition-all text-sm group"
+            >
+              <Clipboard className="w-4 h-4" />
+              Format Report
+              <span className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                Under Development
+              </span>
+            </button>
           </div>
+
+          <AnimatePresence>
+            {showDevNotice && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="bg-purple-50 border border-purple-200 text-purple-700 px-4 py-3 rounded-xl text-sm flex items-center gap-2"
+              >
+                <Info className="w-4 h-4" />
+                This feature is currently under development for better performance.
+              </motion.div>
+            )}
+          </AnimatePresence>
         </section>
 
         {/* Output Panel */}
