@@ -83,13 +83,27 @@ export default function RichTextCopier() {
   };
 
   const cleanBullets = () => {
-    const lines = inputText.split('\n');
+    // If there are semicolons and few/no newlines, split by semicolon
+    let rawItems: string[] = [];
+    const hasSemicolons = inputText.includes(';');
+    const hasNewlines = inputText.includes('\n');
+    
+    if (hasSemicolons && (!hasNewlines || inputText.split('\n').filter(l => l.trim()).length <= 1)) {
+      rawItems = inputText.split(';');
+    } else {
+      rawItems = inputText.split('\n');
+    }
+
     let cleanHTML = '<div class="prose"><ul>';
     
-    lines.forEach(line => {
+    rawItems.forEach(item => {
       // Strip leading bullets (•, -, etc.) and all following whitespace
-      const cleanedLine = line.replace(/^[•\-\u2022\s\t*]+/, '').trim();
+      let cleanedLine = item.replace(/^[•\-\u2022\s\t*]+/, '').trim();
+      
       if (cleanedLine) {
+        // Capitalize the first letter
+        cleanedLine = cleanedLine.charAt(0).toUpperCase() + cleanedLine.slice(1);
+        
         // Wrap the label (e.g., "Company Overview:") in <strong> tags
         const formattedLine = cleanedLine.replace(/^(.*?:\s)/, '<strong>$1</strong>');
         cleanHTML += `<li>${formattedLine}</li>`;
