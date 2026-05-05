@@ -21,7 +21,10 @@ interface LinkData {
   publisher: string;
   year: string;
   url: string;
+  suffix?: string;
   title?: string;
+  h1?: string;
+  description?: string;
   loading?: boolean;
 }
 
@@ -34,13 +37,15 @@ export default function RichTextCopier() {
   const [showDevNotice, setShowDevNotice] = useState(false);
 
   const extractLinks = (text: string) => {
-    // Matches: (Source: Publisher, Year, URL)
-    const regex = /\(Source:\s*([^,]+),\s*(\d{4}),\s*(https?:\/\/[^\)]+)\)/g;
+    // Matches: (Source: Publisher, Year, URL) followed by optional trailing text
+    // The trailing text is captured until it hits a newline, another source start, or a bullet
+    const regex = /\(Source:\s*([^,]+),\s*(\d{4}),\s*(https?:\/\/[^\)]+)\)(?:[\s\-\—\–]*([^•\n\(]+))?/g;
     const matches = [...text.matchAll(regex)];
     return matches.map(match => ({
       publisher: match[1],
       year: match[2],
-      url: match[3].replace(/\)$/, '') // Ensure closing parenthesis isn't included
+      url: match[3].trim(),
+      suffix: match[4] ? match[4].trim() : ''
     }));
   };
 
@@ -48,9 +53,13 @@ export default function RichTextCopier() {
     try {
       const res = await fetch(`/api/get-title?url=${encodeURIComponent(url)}`);
       const data = await res.json();
-      return data.title;
+      return { 
+        title: data.title || '', 
+        h1: data.h1 || '', 
+        description: data.description || '' 
+      };
     } catch (err) {
-      return url;
+      return { title: url, h1: '', description: '' };
     }
   };
 
@@ -63,8 +72,8 @@ export default function RichTextCopier() {
 
     const processedLinks = await Promise.all(
       extracted.map(async (link) => {
-        const title = await fetchTitle(link.url);
-        return { ...link, title, loading: false };
+        const metadata = await fetchTitle(link.url);
+        return { ...link, ...metadata, loading: false };
       })
     );
 
@@ -72,9 +81,11 @@ export default function RichTextCopier() {
     
     // Generate Rich HTML for links
     const heading = processedLinks.length === 1 ? 'Source' : 'Sources';
-    let html = `<div class="prose"><h2>${heading}</h2><ul>`;
+    let html = `<div class="prose prose-sm max-w-none"><h2>${heading}</h2><ul>`;
+    
     processedLinks.forEach(link => {
-      html += `<li><a href="${link.url}">${link.title || link.url}</a></li>`;
+      const linkText = link.publisher || 'Source';
+      html += `<li><a href="${link.url}">${linkText}</a></li>`;
     });
     html += '</ul></div>';
     
@@ -410,7 +421,9 @@ export default function RichTextCopier() {
                       {link.loading ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
                       ) : (
-                        <span className="truncate max-w-[150px] opacity-60 italic">{link.title}</span>
+                        <span className="truncate max-w-[150px] opacity-60 italic">
+                          {link.h1 || link.title || 'No Title'}
+                        </span>
                       )}
                     </div>
                   ))}
