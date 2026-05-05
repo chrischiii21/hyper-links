@@ -83,13 +83,17 @@ export default function RichTextCopier() {
   };
 
   const cleanBullets = () => {
-    // If there are semicolons and few/no newlines, split by semicolon
+    // If there are semicolons or bullets and few/no newlines, split by separator
     let rawItems: string[] = [];
     const hasSemicolons = inputText.includes(';');
+    const hasBullets = (inputText.match(/[•\u2022]/g) || []).length > 1;
     const hasNewlines = inputText.includes('\n');
+    const isSingleLine = !hasNewlines || inputText.split('\n').filter(l => l.trim()).length <= 1;
     
-    if (hasSemicolons && (!hasNewlines || inputText.split('\n').filter(l => l.trim()).length <= 1)) {
+    if (hasSemicolons && isSingleLine) {
       rawItems = inputText.split(';');
+    } else if (hasBullets && isSingleLine) {
+      rawItems = inputText.split(/[•\u2022]/);
     } else {
       rawItems = inputText.split('\n');
     }
