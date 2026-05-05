@@ -1,11 +1,21 @@
 ---
-import Welcome from '../components/Welcome.astro';
-import Layout from '../layouts/Layout.astro';
-
-// Welcome to Astro! Wondering what to do next? Check out the Astro documentation at https://docs.astro.build
-// Don't want to use any of this? Delete everything in this file, the `assets`, `components`, and `layouts` directories, and start fresh.
+import RichTextCopier from '../components/RichTextCopier';
+import '../styles/global.css';
 ---
 
-<Layout>
-	<Welcome />
-</Layout>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Rich Text Copier | Smart Format Tool</title>
+    <meta name="description" content="Extract links and sanitize bullet points into formatted rich text for Slack, Notion, and Wikis." />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+	</head>
+	<body class="antialiased min-h-screen">
+		<RichTextCopier client:load />
+	</body>
+</html>
