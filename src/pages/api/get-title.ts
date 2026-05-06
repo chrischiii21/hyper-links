@@ -5,7 +5,12 @@ export const GET: APIRoute = async ({ request }) => {
   if (!urlParam) return new Response('Missing URL', { status: 400 });
 
   try {
-    const response = await fetch(urlParam);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
+
+    const response = await fetch(urlParam, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     if (!response.ok) throw new Error(`Failed to fetch: ${response.statusText}`);
     
     const html = await response.text();

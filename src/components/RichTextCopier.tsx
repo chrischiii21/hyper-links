@@ -79,6 +79,7 @@ export default function RichTextCopier() {
   const processLinks = async () => {
     try {
       setIsLoading(true);
+      setOutputHtml('');
       showToast('Processing links...', 'info');
       const extracted = extractLinks(inputText);
       
