@@ -50,16 +50,42 @@ export default function RichTextCopier() {
   };
 
   const extractLinks = (text: string) => {
-    // Matches: (Source: Publisher, Year, URL) followed by optional trailing text
-    // The trailing text is captured until it hits a newline, another source start, or a bullet
-    const regex = /\(Source:\s*([^,]+),\s*(\d{4}),\s*(https?:\/\/[^\)]+)\)(?:[\s\-\—\–]*([^•\n\(]+))?/g;
-    const matches = [...text.matchAll(regex)];
-    return matches.map(match => ({
-      publisher: match[1],
-      year: match[2],
-      url: match[3].trim(),
-      suffix: match[4] ? match[4].trim() : ''
-    }));
+    const results: LinkData[] = [];
+    const regex = /(.*?)\s*\((.*?)(https?:\/\/[^\)]+)\)/g;
+    
+    let match;
+    let foundAny = false;
+    
+    while ((match = regex.exec(text)) !== null) {
+      foundAny = true;
+      // Clean up the preceding text (remove leading semicolons, newlines, or standalone "Sources" headers)
+      let precedingText = match[1].replace(/^[;\s\n]+/, '').trim();
+      precedingText = precedingText.replace(/^Sources?[\s\n]*/i, '').trim();
+      
+      const insideParens = match[2].trim();
+      const url = match[3].trim();
+      
+      let publisher = '';
+      if (insideParens) {
+        // If there's content before the URL in the parens, use the first comma-separated chunk
+        publisher = insideParens.split(',')[0].replace(/Source:\s*/i, '').trim();
+      } else {
+        // Otherwise, use the text immediately preceding the parentheses
+        publisher = precedingText;
+      }
+      
+      results.push({ publisher: publisher || 'Source', url, year: '' });
+    }
+    
+    // Fallback: If no formatted links were found, try to grab any raw URLs
+    if (!foundAny) {
+      const rawUrls = [...text.matchAll(/(https?:\/\/[^\s\)]+)/g)];
+      rawUrls.forEach(urlMatch => {
+        results.push({ publisher: 'Source', url: urlMatch[1], year: '' });
+      });
+    }
+    
+    return results;
   };
 
   const fetchTitle = async (url: string) => {

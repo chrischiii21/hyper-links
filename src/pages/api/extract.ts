@@ -39,7 +39,6 @@ const SUB_HEADERS = [
   "Points of Improvement",
   "Level of Criticality",
   "Level of Stickiness",
-  "Competitive Landscape",
   "Leadership Summary",
   "Leadership Team",
   "Team Stability",
@@ -92,7 +91,7 @@ export const POST: APIRoute = async ({ request }) => {
     // Regex for HTML matching to preserve tags
     const titleRegexHtml = new RegExp(`^(?:<[^>]+>|\\s)*${prefixPattern}(${escapedSubHeaders})(?:<[^>]+>|\\s)*[:\\-\\u2013\\u2014]?(?:<[^>]+>|\\s)*`, 'i');
 
-    $('p, li, h1, h3, h4, h5, h6, span, strong, b').each((_, el) => {
+    $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b').each((_, el) => {
       const text = $(el).text().trim();
       const match = subHeaderRegex.exec(text);
       
@@ -100,21 +99,21 @@ export const POST: APIRoute = async ({ request }) => {
         let innerText = match[1];
         const remainingText = match[2];
         
-        // Ensure "Company Overview" is always changed to "Value Proposition"
+        // Use a placeholder so we can dynamically resolve it based on the section it ends up in
         if (innerText.toLowerCase() === 'company overview') {
-          innerText = 'Value Proposition';
+          innerText = '%%COMPANY_OVERVIEW_PLACEHOLDER%%';
         }
         
         const h2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
         
-        if (['p', 'li', 'h1', 'h3', 'h4', 'h5', 'h6'].includes(el.tagName)) {
+        if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(el.tagName)) {
           if (remainingText && remainingText.trim().length > 0) {
             // If it's an inline sub-header inside a bullet point, the user wants to retain the bullet.
             // We skip replacing it, leaving it as a normal inline list item.
             if (el.tagName === 'li') {
               if (match[1].toLowerCase() === 'company overview') {
                 const rawHtml = $(el).html() || '';
-                $(el).html(rawHtml.replace(/company overview/i, 'Value Proposition'));
+                $(el).html(rawHtml.replace(/company overview/i, '%%COMPANY_OVERVIEW_PLACEHOLDER%%'));
               }
               return;
             }
@@ -133,6 +132,76 @@ export const POST: APIRoute = async ({ request }) => {
           }
         }
       }
+    });
+
+    // Pre-process tables to format specific cells (like "Key functionalities") into bullet points
+    const formatCellAsBullets = (cell: any) => {
+      let rawHtml = cell.html() || '';
+      // Convert typical line breaks into newlines
+      rawHtml = rawHtml.replace(/<br\s*\/?>/gi, '\n');
+      rawHtml = rawHtml.replace(/<\/p>\s*<p[^>]*>/gi, '\n');
+      let text = rawHtml.replace(/<[^>]+>/g, '').trim();
+      
+      const hasNewlines = text.includes('\n');
+      const hasBullets = (text.match(/[•\u2022]/g) || []).length > 0;
+      
+      let rawItems: string[] = [];
+      if (hasNewlines) {
+        rawItems = text.split('\n');
+      } else if (hasBullets) {
+        rawItems = text.split(/[•\u2022]/);
+      } else if (text.includes(';')) {
+        rawItems = text.split(';');
+      } else {
+        rawItems = [text];
+      }
+
+      let listHtml = '<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0;">';
+      let validItems = 0;
+      rawItems.forEach((item: string) => {
+        let cleanItem = item.replace(/^[•\-\u2022\u2013\u2014\s\t*]+/, '').trim();
+        if (cleanItem) {
+          listHtml += `<li style="margin-bottom: 0.25em;">${cleanItem}</li>`;
+          validItems++;
+        }
+      });
+      listHtml += '</ul>';
+
+      // Only apply if we actually found multiple items or explicit separators
+      if (validItems > 0 && (validItems > 1 || hasBullets || hasNewlines)) {
+        cell.html(listHtml);
+      }
+    };
+
+    $('table').each((_, tableEl) => {
+      // Check for column-based table (headers in the first row)
+      let keyFuncColIndex = -1;
+      $(tableEl).find('tr').first().find('th, td').each((colIndex, cellEl) => {
+        if ($(cellEl).text().trim().toLowerCase().includes('key functionalities')) {
+          keyFuncColIndex = colIndex;
+        }
+      });
+
+      if (keyFuncColIndex !== -1) {
+        $(tableEl).find('tr').each((rowIndex, rowEl) => {
+          if (rowIndex === 0) return; // Skip header
+          const targetCell = $(rowEl).find('td').eq(keyFuncColIndex);
+          if (targetCell.length > 0) {
+            formatCellAsBullets(targetCell);
+          }
+        });
+      }
+
+      // Check for row-based table (header in the first column)
+      $(tableEl).find('tr').each((_, rowEl) => {
+        const firstCell = $(rowEl).find('th, td').first();
+        if (firstCell.text().trim().toLowerCase().includes('key functionalities')) {
+          const nextCell = firstCell.next('td');
+          if (nextCell.length > 0) {
+            formatCellAsBullets(nextCell);
+          }
+        }
+      });
     });
 
     const MATCH_PATTERNS = [
@@ -221,6 +290,13 @@ export const POST: APIRoute = async ({ request }) => {
     const finalSections = TARGET_TITLES.map((title, index) => {
       const foundSection = extractedSections.find(s => s.originalIndex === index);
       let bodyHtml = foundSection ? foundSection.body : "<p>No content found for this section.</p>";
+
+      // Resolve the dynamic "Company Overview" placeholder depending on the section
+      if (index === 0) { // Executive Summary
+        bodyHtml = bodyHtml.replace(/%%COMPANY_OVERVIEW_PLACEHOLDER%%/g, 'Company Overview');
+      } else { // All other sections
+        bodyHtml = bodyHtml.replace(/%%COMPANY_OVERVIEW_PLACEHOLDER%%/g, 'Value Proposition');
+      }
 
       // AGGRESSIVE UNBOLDING PASS: Catch native Word <h2> tags and strip inner strong/b tags
       const $body = cheerio.load(bodyHtml, null, false);

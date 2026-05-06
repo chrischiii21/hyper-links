@@ -73,8 +73,26 @@ export default function ReportProcessor() {
 
   const handleCopy = async (id: number, title: string, htmlBody: string) => {
     try {
-      // Create rich HTML content including the title, ensuring it is not bold
-      const fullHtml = `<h2 style="font-weight: 300;"><span style="font-weight: 300;">${title}</span></h2>\n${htmlBody}`;
+      // Use a temporary div to analyze the HTML structure robustly
+      const analysisDiv = document.createElement('div');
+      analysisDiv.innerHTML = htmlBody;
+      
+      // Find the first child element that actually contains visible text
+      let firstTextElement = null;
+      for (const child of Array.from(analysisDiv.children)) {
+        if (child.textContent && child.textContent.trim().length > 0) {
+          firstTextElement = child;
+          break;
+        }
+      }
+
+      // If the first visible element is already a heading, avoid duplicating the title
+      const hasTopHeading = firstTextElement && /^H[1-4]$/i.test(firstTextElement.tagName);
+
+      // Create rich HTML content. Only inject the main section title if there's no heading at the top.
+      const fullHtml = hasTopHeading 
+        ? htmlBody 
+        : `<h2 style="font-weight: 300;"><span style="font-weight: 300;">${title}</span></h2>\n${htmlBody}`;
       
       // Create a plain text fallback
       const tempDiv = document.createElement('div');
@@ -96,9 +114,23 @@ export default function ReportProcessor() {
     } catch (err) {
       console.error('Failed to copy rich text, falling back to plain text:', err);
       try {
-        // Fallback for older browsers
+        // Fallback logic requires the same top-heading check
+        const analysisDiv = document.createElement('div');
+        analysisDiv.innerHTML = htmlBody;
+        let firstTextElement = null;
+        for (const child of Array.from(analysisDiv.children)) {
+          if (child.textContent && child.textContent.trim().length > 0) {
+            firstTextElement = child;
+            break;
+          }
+        }
+        const hasTopHeading = firstTextElement && /^H[1-4]$/i.test(firstTextElement.tagName);
+        const fullHtml = hasTopHeading 
+          ? htmlBody 
+          : `<h2 style="font-weight: 300;"><span style="font-weight: 300;">${title}</span></h2>\n${htmlBody}`;
+
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = `<h2 style="font-weight: 300;"><span style="font-weight: 300;">${title}</span></h2>\n${htmlBody}`;
+        tempDiv.innerHTML = fullHtml;
         await navigator.clipboard.writeText(tempDiv.innerText);
         setCopiedId(id);
         showToast('Section copied to clipboard!', 'success');
