@@ -97,8 +97,13 @@ export const POST: APIRoute = async ({ request }) => {
       const match = subHeaderRegex.exec(text);
       
       if (match) {
-        const innerText = match[1];
+        let innerText = match[1];
         const remainingText = match[2];
+        
+        // Ensure "Company Overview" is always changed to "Value Proposition"
+        if (innerText.toLowerCase() === 'company overview') {
+          innerText = 'Value Proposition';
+        }
         
         const h2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
         
@@ -107,6 +112,10 @@ export const POST: APIRoute = async ({ request }) => {
             // If it's an inline sub-header inside a bullet point, the user wants to retain the bullet.
             // We skip replacing it, leaving it as a normal inline list item.
             if (el.tagName === 'li') {
+              if (match[1].toLowerCase() === 'company overview') {
+                const rawHtml = $(el).html() || '';
+                $(el).html(rawHtml.replace(/company overview/i, 'Value Proposition'));
+              }
               return;
             }
 
@@ -211,10 +220,30 @@ export const POST: APIRoute = async ({ request }) => {
     // Create the final 10 sections in exact order
     const finalSections = TARGET_TITLES.map((title, index) => {
       const foundSection = extractedSections.find(s => s.originalIndex === index);
+      let bodyHtml = foundSection ? foundSection.body : "<p>No content found for this section.</p>";
+
+      // AGGRESSIVE UNBOLDING PASS: Catch native Word <h2> tags and strip inner strong/b tags
+      const $body = cheerio.load(bodyHtml, null, false);
+      $body('h2').each((_, el) => {
+        // Remove <strong> and <b> wrappers inside the h2
+        $body(el).find('strong, b').each((_, boldEl) => {
+          $body(boldEl).replaceWith($body(boldEl).html() || '');
+        });
+
+        // Apply strict inline unbolding styles for the clipboard
+        $body(el).attr('style', 'font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;');
+
+        // Wrap inner text to force word processors to respect it
+        const inner = $body(el).html() || '';
+        if (!inner.includes('<span style="font-weight: 300;"')) {
+          $body(el).html(`<span style="font-weight: 300;">${inner}</span>`);
+        }
+      });
+
       return {
         id: index + 1,
         title: title, // Only retain the section name, no Roman Numerals
-        body: foundSection ? foundSection.body : "<p>No content found for this section.</p>"
+        body: $body.html()
       };
     });
 

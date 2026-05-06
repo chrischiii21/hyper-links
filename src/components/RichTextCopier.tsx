@@ -142,7 +142,11 @@ export default function RichTextCopier() {
         cleanedLine = cleanedLine.charAt(0).toUpperCase() + cleanedLine.slice(1);
         
         // Wrap the label (e.g., "Company Overview:") in <strong> tags
-        const formattedLine = cleanedLine.replace(/^(.*?:\s)/, '<strong>$1</strong>');
+        let formattedLine = cleanedLine.replace(/^(.*?:\s)/, '<strong>$1</strong>');
+        
+        // Ensure "Company Overview:" is renamed to "Value Proposition:"
+        formattedLine = formattedLine.replace(/<strong>Company Overview:/i, '<strong>Value Proposition:');
+        
         cleanHTML += `<li>${formattedLine}</li>`;
       }
     });
