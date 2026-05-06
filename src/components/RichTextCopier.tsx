@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   Clipboard, 
   Link, 
@@ -36,6 +36,19 @@ export default function RichTextCopier() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied'>('idle');
   const [showDevNotice, setShowDevNotice] = useState(false);
 
+  const [toastMessage, setToastMessage] = useState<{title: string, type: 'success'|'info'|'error'} | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout>();
+
+  const showToast = (title: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setToastMessage({ title, type });
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+  };
+
   const extractLinks = (text: string) => {
     // Matches: (Source: Publisher, Year, URL) followed by optional trailing text
     // The trailing text is captured until it hits a newline, another source start, or a bullet
@@ -64,33 +77,41 @@ export default function RichTextCopier() {
   };
 
   const processLinks = async () => {
-    setIsLoading(true);
-    const extracted = extractLinks(inputText);
-    
-    // Set initial links with loading state
-    setLinks(extracted.map(link => ({ ...link, loading: true })));
+    try {
+      setIsLoading(true);
+      showToast('Processing links...', 'info');
+      const extracted = extractLinks(inputText);
+      
+      // Set initial links with loading state
+      setLinks(extracted.map(link => ({ ...link, loading: true })));
 
-    const processedLinks = await Promise.all(
-      extracted.map(async (link) => {
-        const metadata = await fetchTitle(link.url);
-        return { ...link, ...metadata, loading: false };
-      })
-    );
+      const processedLinks = await Promise.all(
+        extracted.map(async (link) => {
+          const metadata = await fetchTitle(link.url);
+          return { ...link, ...metadata, loading: false };
+        })
+      );
 
-    setLinks(processedLinks);
-    
-    // Generate Rich HTML for links
-    const heading = processedLinks.length === 1 ? 'Source' : 'Sources';
-    let html = `<div class="prose prose-sm max-w-none"><h2>${heading}</h2><ul>`;
-    
-    processedLinks.forEach(link => {
-      const linkText = link.publisher || 'Source';
-      html += `<li><a href="${link.url}">${linkText}</a></li>`;
-    });
-    html += '</ul></div>';
-    
-    setOutputHtml(html);
-    setIsLoading(false);
+      setLinks(processedLinks);
+      
+      // Generate Rich HTML for links
+      const heading = processedLinks.length === 1 ? 'Source' : 'Sources';
+      let html = `<div class="prose prose-sm max-w-none"><h2>${heading}</h2><ul>`;
+      
+      processedLinks.forEach(link => {
+        const linkText = link.publisher || 'Source';
+        html += `<li><a href="${link.url}">${linkText}</a></li>`;
+      });
+      html += '</ul></div>';
+      
+      setOutputHtml(html);
+      showToast('Links processed successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to process links', 'error');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const cleanBullets = () => {
@@ -128,10 +149,12 @@ export default function RichTextCopier() {
     cleanHTML += '</ul></div>';
     setOutputHtml(cleanHTML);
     setLinks([]); // Clear links when cleaning bullets
+    showToast('Bullets cleaned successfully!', 'success');
   };
 
   const formatReport = () => {
     setShowDevNotice(true);
+    showToast('This feature is currently under development', 'info');
     setTimeout(() => setShowDevNotice(false), 3000);
     return; // Locked for now
     const sections = inputText.split(/\n(?=[IVX]+\. |Sources:)/);
@@ -264,6 +287,7 @@ export default function RichTextCopier() {
       
       await navigator.clipboard.write([clipboardItem]);
       setCopyStatus('copied');
+      showToast('Copied to clipboard!', 'success');
       setTimeout(() => setCopyStatus('idle'), 2000);
     } catch (err) {
       console.error('Failed to copy: ', err);
@@ -271,9 +295,10 @@ export default function RichTextCopier() {
       try {
           await navigator.clipboard.writeText(outputHtml);
           setCopyStatus('copied');
+          showToast('Copied to clipboard!', 'success');
           setTimeout(() => setCopyStatus('idle'), 2000);
       } catch (e) {
-          alert('Failed to copy to clipboard.');
+          showToast('Failed to copy to clipboard', 'error');
       }
     }
   };
@@ -433,6 +458,35 @@ export default function RichTextCopier() {
           </AnimatePresence>
         </section>
       </div>
+
+      {/* Global Toast Notification */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            className={cn(
+              "fixed bottom-8 right-8 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-50",
+              toastMessage.type === 'success' ? 'bg-slate-900 text-white' : 
+              toastMessage.type === 'error' ? 'bg-red-600 text-white' :
+              'bg-blue-600 text-white'
+            )}
+          >
+            <div className={cn(
+              "rounded-full p-1",
+              toastMessage.type === 'success' ? 'bg-green-500' :
+              toastMessage.type === 'error' ? 'bg-red-500' :
+              'bg-blue-500'
+            )}>
+              {toastMessage.type === 'success' ? <CheckCircle className="w-4 h-4 text-white" /> : 
+               toastMessage.type === 'error' ? <span className="w-4 h-4 text-white font-bold flex items-center justify-center" style={{fontSize: '10px'}}>!</span> :
+               <Loader2 className="w-4 h-4 text-white animate-spin" />}
+            </div>
+            <span className="text-sm font-medium">{toastMessage.title}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

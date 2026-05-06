@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
 
 @theme {
   --color-brand-primary: #3b82f6;
@@ -31,3 +33,9 @@ body {
 .prose a:hover {
   color: #1d4ed8;
 }
+
+.prose h2 {
+  font-weight: 300 !important;
+  color: #1e293b !important;
+}
+

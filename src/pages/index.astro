@@ -1,7 +1,34 @@
 ---
 import RichTextCopier from '../components/RichTextCopier';
+import ReportProcessor from '../components/ReportProcessor';
 import '../styles/global.css';
 ---
+
+<script>
+	// Handle view switching
+	const copierBtn = document.getElementById('view-copier');
+	const processorBtn = document.getElementById('view-processor');
+	const copierView = document.getElementById('copier-view');
+	const processorView = document.getElementById('processor-view');
+
+	copierBtn?.addEventListener('click', () => {
+		copierView?.classList.remove('hidden');
+		processorView?.classList.add('hidden');
+		copierBtn.classList.add('bg-blue-600', 'text-white');
+		copierBtn.classList.remove('text-slate-600', 'hover:bg-slate-100');
+		processorBtn?.classList.remove('bg-blue-600', 'text-white');
+		processorBtn?.classList.add('text-slate-600', 'hover:bg-slate-100');
+	});
+
+	processorBtn?.addEventListener('click', () => {
+		processorView?.classList.remove('hidden');
+		copierView?.classList.add('hidden');
+		processorBtn.classList.add('bg-blue-600', 'text-white');
+		processorBtn.classList.remove('text-slate-600', 'hover:bg-slate-100');
+		copierBtn?.classList.remove('bg-blue-600', 'text-white');
+		copierBtn?.classList.add('text-slate-600', 'hover:bg-slate-100');
+	});
+</script>
 
 <html lang="en">
 	<head>
@@ -9,13 +36,45 @@ import '../styles/global.css';
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Rich Text Copier | Smart Format Tool</title>
-    <meta name="description" content="Extract links and sanitize bullet points into formatted rich text for Slack, Notion, and Wikis." />
+		<title>Rich Text Copier & Report Processor</title>
+    <meta name="description" content="Professional tools for link extraction, bullet sanitization, and research report processing." />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 	</head>
-	<body class="antialiased min-h-screen">
-		<RichTextCopier client:load />
+	<body class="antialiased min-h-screen bg-slate-50 font-sans">
+		<nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 py-4 mb-8">
+			<div class="max-w-6xl mx-auto px-4 flex items-center justify-between">
+				<div class="flex items-center gap-2 font-bold text-xl text-slate-900">
+					<div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+						<span class="text-white text-sm">H</span>
+					</div>
+					Hyperlinks
+				</div>
+				<div class="flex bg-slate-100 p-1 rounded-xl">
+					<button 
+						id="view-copier"
+						class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 text-white"
+					>
+						Text Copier
+					</button>
+					<button 
+						id="view-processor"
+						class="px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:bg-slate-100"
+					>
+						Report Processor
+					</button>
+				</div>
+			</div>
+		</nav>
+
+		<main class="pb-20">
+			<div id="copier-view">
+				<RichTextCopier client:load />
+			</div>
+			<div id="processor-view" class="hidden">
+				<ReportProcessor client:load />
+			</div>
+		</main>
 	</body>
 </html>
