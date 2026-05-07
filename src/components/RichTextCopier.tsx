@@ -52,70 +52,71 @@ export default function RichTextCopier() {
   const extractLinks = (text: string) => {
     const results: LinkData[] = [];
     
-    // Clean up "Sources" header
+    // Clean up "Sources" header at the very beginning
     let cleanText = text.replace(/^Sources?[\s\n]*/i, '').trim();
     
-    // Split by semicolons or newlines to get individual link chunks
-    const chunks = cleanText.split(/;\s*|\n+/);
+    // Find all URLs in the text
+    const urlRegex = /(https?:\/\/[^\s\)]+)/g;
+    let match;
+    let lastIndex = 0;
     
-    chunks.forEach(chunk => {
-      chunk = chunk.trim();
-      if (!chunk) return;
+    while ((match = urlRegex.exec(cleanText)) !== null) {
+      const url = match[1];
+      const matchIndex = match.index;
       
-      // Find the URL in the chunk
-      const urlMatch = chunk.match(/(https?:\/\/[^\s\)]+)/);
-      if (!urlMatch) return; // If there's no URL, it's not a link
+      // Text between the last URL (or start) and this URL
+      let beforeUrl = cleanText.substring(lastIndex, matchIndex).trim();
       
-      const url = urlMatch[1];
-      
-      // We want the text BEFORE the URL to identify the publisher
-      let beforeUrl = chunk.substring(0, urlMatch.index).trim();
-      
-      // Clean up trailing commas, dashes, and unclosed opening parentheses right before the URL
-      beforeUrl = beforeUrl.replace(/[,\-\(\s]+$/, '').trim();
-      
-      let publisher = '';
-      
-      // Check if there are parentheses before the URL (e.g. "Description (PRWeb, 2026" or "Description (2026)")
-      const parenMatch = beforeUrl.match(/(.*?)\s*\((.*?)$/);
+      // Clean up the "publisher" text
+      // Remove leading/trailing junk: commas, semicolons, dashes, parentheses, newlines
+      let publisher = beforeUrl
+        .replace(/^[,\-\(\)\s\t\n;]+/, '') // Leading junk
+        .replace(/[,\-\(\)\s\t\n;]+$/, '') // Trailing junk
+        .trim();
+
+      // Handle the case where there are parentheses before the URL (e.g. "Description (PRWeb, 2026" or "Description (2026)")
+      const parenMatch = publisher.match(/(.*?)\s*\((.*?)$/);
       
       if (parenMatch) {
          const outside = parenMatch[1].trim();
          // Clean up the inside text (remove trailing closing parenthesis if present)
          let inside = parenMatch[2].replace(/\)$/, '').trim();
          
-         inside = inside.replace(/Source:\s*/i, '').trim();
-         const firstInside = inside.split(',')[0].trim();
-         
-         // If the first thing inside the parentheses is just a year, a date, or a month (e.g. "2026", "January 2026", or "January")
-         // then it's NOT the publisher name. The publisher is the outside text.
-         const isMonthOnly = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov|Dec)(\s+\d{1,2})?$/i.test(firstInside);
-         const isYearOrDate = /^\d{4}$/.test(firstInside) || /^[a-zA-Z]+\s+\d{1,2},?\s*\d{4}$/.test(firstInside) || /^[a-zA-Z]+\s+\d{4}$/.test(firstInside) || isMonthOnly;
-         
-         if (isYearOrDate && outside) {
+         if (inside) {
+             inside = inside.replace(/Source:\s*/i, '').trim();
+             const firstInside = inside.split(',')[0].trim();
+             
+             // If the first thing inside the parentheses is just a year, a date, or a month
+             const isMonthOnly = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov|Dec)(\s+\d{1,2})?$/i.test(firstInside);
+             const isYearOrDate = /^\d{4}$/.test(firstInside) || 
+                                  /^(Q[1-4]\s+)?\d{4}$/i.test(firstInside) || // Handle Q1 2024
+                                  /^[a-zA-Z]+\s+\d{1,2},?\s*\d{4}$/.test(firstInside) || 
+                                  /^[a-zA-Z]+\s+\d{4}$/.test(firstInside) || 
+                                  isMonthOnly;
+             
+             if (isYearOrDate && outside) {
+                 publisher = outside;
+             } else {
+                 publisher = firstInside;
+             }
+         } else if (outside) {
+             // Case: "Name (https://...)" - inside is empty, use outside
              publisher = outside;
-         } else {
-             // Otherwise, the first thing inside IS the publisher (e.g. "PRWeb")
-             publisher = firstInside;
-         }
-         
-         // Fallback if the outside was empty (e.g. it was just `(Source: PRWeb...)`)
-         if (!publisher) {
-             publisher = firstInside;
          }
       } else {
          // No parentheses at all before the URL. 
          // Just take the first comma-separated chunk (e.g. "PMG Press Release, January 2026" -> "PMG Press Release")
-         publisher = beforeUrl.split(',')[0].replace(/Source:\s*/i, '').trim();
+         publisher = publisher.split(',')[0].replace(/Source:\s*/i, '').trim();
       }
       
       // Ultimate fallback
-      if (!publisher) {
+      if (!publisher || publisher.length < 2) {
           publisher = 'Source';
       }
       
       results.push({ publisher, url, year: '' });
-    });
+      lastIndex = urlRegex.lastIndex;
+    }
     
     return results;
   };

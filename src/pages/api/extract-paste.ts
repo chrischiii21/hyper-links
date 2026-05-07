@@ -196,6 +196,16 @@ export const POST: APIRoute = async ({ request }) => {
             
             if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(el.tagName)) {
               if (remainingText && remainingText.trim().length > 0) {
+                // SPECIAL CASE: Beautify links for Sources
+                if (innerText.toLowerCase() === 'sources') {
+                  const links = extractLinksForReport(remainingText);
+                  if (links.length > 0) {
+                    const linksHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem;">${links.map(l => `<li style="margin-bottom: 0.25em;"><a href="${l.url}" style="color: #2563eb; text-decoration: none;">${l.publisher}</a></li>`).join('')}</ul>`;
+                    $(el).replaceWith(`${h2Html}\n${linksHtml}`);
+                    return;
+                  }
+                }
+
                 // For Executive Summary (index 0), we keep li inline as per user request
                 if (el.tagName === 'li' && index === 0) {
                   // Even if inline, ensure it's not bold
@@ -229,6 +239,60 @@ export const POST: APIRoute = async ({ request }) => {
             }
           }
         });
+
+        // POST-PROCESS: Find "Sources" headers and beautify the content following them
+        $('h2[data-subheader="true"]').each((_, h2El) => {
+          const $h2 = $(h2El);
+          if ($h2.text().trim().toLowerCase() === 'sources') {
+            const $next = $h2.next();
+            if ($next.length > 0 && !($next.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes($next[0].tagName))) {
+              const text = $next.text().trim();
+              const links = extractLinksForReport(text);
+              if (links.length > 0) {
+                const linksHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem;">${links.map(l => `<li style="margin-bottom: 0.25em;"><a href="${l.url}" style="color: #2563eb; text-decoration: none;">${l.publisher}</a></li>`).join('')}</ul>`;
+                $next.replaceWith(linksHtml);
+              }
+            }
+          }
+        });
+
+        function extractLinksForReport(text: string) {
+          const results: { publisher: string; url: string }[] = [];
+          const urlRegex = /(https?:\/\/[^\s\)]+)/g;
+          let match;
+          let lastIndex = 0;
+          const cleanText = text.trim();
+          
+          while ((match = urlRegex.exec(cleanText)) !== null) {
+            const url = match[1];
+            let publisher = cleanText.substring(lastIndex, match.index)
+              .replace(/^[,\-\(\)\s\t\n;]+/, '')
+              .replace(/[,\-\(\)\s\t\n;]+$/, '')
+              .trim();
+
+            const parenMatch = publisher.match(/(.*?)\s*\((.*?)$/);
+            if (parenMatch) {
+               const outside = parenMatch[1].trim();
+               let inside = parenMatch[2].replace(/\)$/, '').trim();
+               if (inside) {
+                   inside = inside.replace(/Source:\s*/i, '').trim();
+                   const firstInside = inside.split(',')[0].trim();
+                   const isMonthOnly = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov|Dec)(\s+\d{1,2})?$/i.test(firstInside);
+                   const isYearOrDate = /^\d{4}$/.test(firstInside) || /^(Q[1-4]\s+)?\d{4}$/i.test(firstInside) || /^[a-zA-Z]+\s+\d{1,2},?\s*\d{4}$/.test(firstInside) || /^[a-zA-Z]+\s+\d{4}$/.test(firstInside) || isMonthOnly;
+                   publisher = (isYearOrDate && outside) ? outside : firstInside;
+               } else if (outside) {
+                   publisher = outside;
+               }
+            } else {
+               publisher = publisher.split(',')[0].replace(/Source:\s*/i, '').trim();
+            }
+            
+            if (!publisher || publisher.length < 2) publisher = 'Source';
+            results.push({ publisher, url });
+            lastIndex = urlRegex.lastIndex;
+          }
+          return results;
+        }
 
         let bodyHtml = $.html();
         if (index === 0) {
