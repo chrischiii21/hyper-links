@@ -300,14 +300,18 @@ export const POST: APIRoute = async ({ request }) => {
 
       // AGGRESSIVE UNBOLDING PASS: Catch native Word <h2> tags and strip inner strong/b tags
       const $body = cheerio.load(bodyHtml, null, false);
-      $body('h2').each((_, el) => {
-        // Remove <strong> and <b> wrappers inside the h2
+      $body('h1, h2, h3, h4, h5, h6').each((_, el) => {
+        // Remove <strong> and <b> wrappers inside the header
         $body(el).find('strong, b').each((_, boldEl) => {
           $body(boldEl).replaceWith($body(boldEl).html() || '');
         });
 
         // Apply strict inline unbolding styles for the clipboard
-        $body(el).attr('style', 'font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;');
+        const isMainTitle = !$body(el).attr('data-subheader');
+        const fontSize = isMainTitle ? '1.5em' : '1.25em';
+        const marginTop = isMainTitle ? '2em' : '1.5em';
+        
+        $body(el).attr('style', `font-weight: 300; color: #1e293b; margin-top: ${marginTop}; margin-bottom: 0.5em; font-size: ${fontSize};`);
 
         // Wrap inner text to force word processors to respect it
         const inner = $body(el).html() || '';

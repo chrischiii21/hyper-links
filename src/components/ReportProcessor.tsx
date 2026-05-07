@@ -22,6 +22,8 @@ export default function ReportProcessor() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [toastMessage, setToastMessage] = useState<{title: string, type: 'success'|'info'|'error'} | null>(null);
+  const [mode, setMode] = useState<'upload' | 'paste'>('upload');
+  const [pastedText, setPastedText] = useState('');
   const toastTimeoutRef = useRef<NodeJS.Timeout>();
 
   const showToast = (title: string, type: 'success' | 'info' | 'error' = 'success') => {
@@ -60,6 +62,41 @@ export default function ReportProcessor() {
     } catch (err: any) {
       setError(err.message);
       showToast('Extraction failed!', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasteSubmit = async () => {
+    if (!pastedText.trim()) {
+      showToast('Please paste some text first', 'error');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setSections([]);
+    showToast('Processing pasted report...', 'info');
+
+    try {
+      const response = await fetch('/api/extract-paste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: pastedText }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to process pasted text');
+      }
+
+      const data = await response.json();
+      setSections(data);
+      showToast('Report processed successfully!', 'success');
+      setPastedText(''); // Clear on success
+    } catch (err: any) {
+      setError(err.message);
+      showToast('Processing failed!', 'error');
     } finally {
       setLoading(false);
     }
@@ -144,50 +181,132 @@ export default function ReportProcessor() {
 
   return (
     <div className="max-w-4xl mx-auto p-6 space-y-8">
-      <header className="text-center space-y-2">
-        <h1 className="text-3xl font-bold tracking-tight text-slate-900">Research Report Pipeline</h1>
-        <p className="text-slate-500">Upload a report to extract sections I through X</p>
+      <header className="text-center space-y-4">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900">Research Report Pipeline</h1>
+          <p className="text-slate-500">Extract high-fidelity sections I through X</p>
+        </div>
+        
+        <div className="flex items-center justify-center p-1 bg-slate-100 rounded-xl w-fit mx-auto">
+          <button
+            onClick={() => setMode('upload')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all",
+              mode === 'upload' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            <Upload className="w-4 h-4" />
+            Upload File
+          </button>
+          <button
+            onClick={() => setMode('paste')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all relative",
+              mode === 'paste' ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+            )}
+          >
+            <Clipboard className="w-4 h-4" />
+            Paste Text
+            <span className="absolute -top-2 -right-2 px-1.5 py-0.5 bg-amber-100 text-[10px] text-amber-700 rounded-full border border-amber-200 font-bold whitespace-nowrap">
+              DEV
+            </span>
+          </button>
+        </div>
       </header>
 
-      {/* Upload Zone */}
-      <div
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={cn(
-          "relative group cursor-pointer border-2 border-dashed border-slate-300 rounded-2xl p-12 transition-all duration-200",
-          "hover:border-blue-500 hover:bg-blue-50/50",
-          loading && "opacity-50 pointer-events-none"
-        )}
-      >
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={(e) => {
-            if (e.target.files?.[0]) {
-              handleFileUpload(e.target.files[0]);
-              e.target.value = ''; // Reset input to allow uploading same file again
-            }
-          }}
-          className="hidden"
-          accept=".txt,.doc,.docx,.md"
-        />
-        <div className="flex flex-col items-center justify-center space-y-4 text-center">
-          <div className="p-4 bg-slate-100 rounded-full group-hover:bg-blue-100 transition-colors">
-            {loading ? (
-              <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-            ) : (
-              <Upload className="w-8 h-8 text-slate-600 group-hover:text-blue-600" />
-            )}
-          </div>
-          <div>
-            <p className="text-lg font-medium text-slate-900">
-              {loading ? 'Processing Report...' : 'Drop your research report here'}
-            </p>
-            <p className="text-sm text-slate-500">or click to browse files</p>
+      {/* Input Zone */}
+      {mode === 'upload' ? (
+        <div
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className={cn(
+            "relative group cursor-pointer border-2 border-dashed border-slate-300 rounded-2xl p-12 transition-all duration-200",
+            "hover:border-blue-500 hover:bg-blue-50/50",
+            loading && "opacity-50 pointer-events-none"
+          )}
+        >
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={(e) => {
+              if (e.target.files?.[0]) {
+                handleFileUpload(e.target.files[0]);
+                e.target.value = '';
+              }
+            }}
+            className="hidden"
+            accept=".txt,.doc,.docx,.md"
+          />
+          <div className="flex flex-col items-center justify-center space-y-4 text-center">
+            <div className="p-4 bg-slate-100 rounded-full group-hover:bg-blue-100 transition-colors">
+              {loading ? (
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+              ) : (
+                <Upload className="w-8 h-8 text-slate-600 group-hover:text-blue-600" />
+              )}
+            </div>
+            <div>
+              <p className="text-lg font-medium text-slate-900">
+                {loading ? 'Processing Report...' : 'Drop your research report here'}
+              </p>
+              <p className="text-sm text-slate-500">or click to browse files</p>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-2">
+            <label className="text-sm font-medium text-slate-700">Paste Report Content</label>
+            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider bg-amber-50 px-2 py-0.5 rounded-full border border-amber-100">
+              Under development - use at your own risk
+            </span>
+          </div>
+          <div className="relative">
+            <textarea
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              placeholder="Paste your Audit and Rebuilt Report here..."
+              className={cn(
+                "w-full h-64 p-6 rounded-2xl border-2 border-slate-200 bg-white shadow-sm transition-all duration-200",
+                "focus:border-blue-500 focus:ring-4 focus:ring-blue-50 focus:outline-none",
+                "placeholder:text-slate-400 font-mono text-sm resize-none",
+                loading && "opacity-50 pointer-events-none"
+              )}
+            />
+            {pastedText && !loading && (
+              <button
+                onClick={() => setPastedText('')}
+                className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handlePasteSubmit}
+            disabled={loading || !pastedText.trim()}
+            className={cn(
+              "w-full flex items-center justify-center gap-2 py-4 rounded-xl font-medium transition-all duration-200",
+              loading || !pastedText.trim()
+                ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                : "bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200"
+            )}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Processing Paste...
+              </>
+            ) : (
+              <>
+                <Check className="w-5 h-5" />
+                Extract Sections from Paste
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {error && (
         <motion.div
