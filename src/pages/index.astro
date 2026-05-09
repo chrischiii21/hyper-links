@@ -1,6 +1,7 @@
 ---
 import RichTextCopier from '../components/RichTextCopier';
 import ReportProcessor from '../components/ReportProcessor';
+import ChangelogBanner from '../components/ChangelogBanner';
 import '../styles/global.css';
 ---
 
@@ -43,7 +44,9 @@ import '../styles/global.css';
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 	</head>
 	<body class="antialiased min-h-screen bg-slate-50 font-sans">
-		<nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-200 py-4 mb-8">
+		<ChangelogBanner client:load />
+
+		<nav class="sticky top-[40px] z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 py-4 mb-8">
 			<div class="max-w-6xl mx-auto px-4 flex items-center justify-between">
 				<div class="flex items-center gap-2 font-bold text-xl text-slate-900">
 					<div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">

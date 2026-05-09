@@ -236,7 +236,7 @@ export default function ReportProcessor() {
               }
             }}
             className="hidden"
-            accept=".txt,.doc,.docx,.md"
+            accept=".txt,.doc,.docx,.md,.pdf"
           />
           <div className="flex flex-col items-center justify-center space-y-4 text-center">
             <div className="p-4 bg-slate-100 rounded-full group-hover:bg-blue-100 transition-colors">

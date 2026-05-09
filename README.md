@@ -15,7 +15,7 @@ Hyperlinks is a high-performance web application designed for researchers, analy
 *   **One-Click Copy**: Specialized rich-text clipboard integration ensures formatting is preserved when pasting into external tools.
 
 ### 2. Research Report Pipeline (Report Processor)
-*   **Multi-format Upload**: Supports `.txt`, `.doc`, `.docx`, and `.md` file uploads.
+*   **Multi-format Upload**: Supports `.txt`, `.doc`, `.docx`, `.md`, and `.pdf` file uploads.
 *   **AI-Powered Segmentation**: Automatically divides lengthy research reports into high-fidelity sections (I through X) based on structural patterns.
 *   **Paste-to-Process**: Quick "Paste Text" mode for processing content directly from your clipboard without saving files.
 *   **Section Management**: Individual copy buttons for each extracted section, maintaining hierarchical structure and professional styling.

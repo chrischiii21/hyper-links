@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
+import { PDFParse } from 'pdf-parse';
+import { generateSourceListHtml } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
   "Executive Summary",
@@ -71,6 +73,11 @@ export const POST: APIRoute = async ({ request }) => {
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.convertToHtml({ buffer: Buffer.from(arrayBuffer) });
       htmlContent = result.value;
+    } else if (fileName.endsWith('.pdf')) {
+      const arrayBuffer = await file.arrayBuffer();
+      const parser = new PDFParse({ data: new Uint8Array(arrayBuffer) });
+      const result = await parser.getText();
+      htmlContent = result.text.split('\n').map(line => `<p>${line}</p>`).join('');
     } else {
       const rawText = await file.text();
       htmlContent = rawText.split('\n').map(line => `<p>${line}</p>`).join('');
@@ -110,9 +117,8 @@ export const POST: APIRoute = async ({ request }) => {
           if (remainingText && remainingText.trim().length > 0) {
             // SPECIAL CASE: If this is a "Sources" header with inline links, format them beautifully
             if (innerText.toLowerCase() === 'sources') {
-              const links = extractLinksForReport(remainingText);
-              if (links.length > 0) {
-                const linksHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem;">${links.map(l => `<li style="margin-bottom: 0.25em;"><a href="${l.url}" style="color: #2563eb; text-decoration: none;">${l.publisher}</a></li>`).join('')}</ul>`;
+              const linksHtml = generateSourceListHtml(remainingText);
+              if (linksHtml !== remainingText) {
                 $(el).replaceWith(`${h2Html}\n${linksHtml}`);
                 return;
               }
@@ -151,57 +157,17 @@ export const POST: APIRoute = async ({ request }) => {
         let $next = $h2.next();
         while ($next.length > 0 && !($next.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes($next[0].tagName))) {
           const text = $next.text().trim();
-          const links = extractLinksForReport(text);
-          if (links.length > 0) {
-            const linksHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem;">${links.map(l => `<li style="margin-bottom: 0.25em;"><a href="${l.url}" style="color: #2563eb; text-decoration: none;">${l.publisher}</a></li>`).join('')}</ul>`;
+          const linksHtml = generateSourceListHtml(text);
+          if (linksHtml !== text) {
             $next.replaceWith(linksHtml);
           }
-          $next = $h2.nextAll().filter((i, el) => !$(el).is($next)).first(); // This is a bit complex, simpler:
-          // Just break after first non-empty content for now or keep going? 
-          // Usually Sources is just one block.
+          $next = $h2.nextAll().filter((i, el) => !$(el).is($next)).first();
           break; 
         }
       }
     });
 
-    // Helper for link extraction in the API context
-    function extractLinksForReport(text: string) {
-      const results: { publisher: string; url: string }[] = [];
-      const urlRegex = /(https?:\/\/[^\s\)]+)/g;
-      let match;
-      let lastIndex = 0;
-      const cleanText = text.trim();
-      
-      while ((match = urlRegex.exec(cleanText)) !== null) {
-        const url = match[1];
-        let publisher = cleanText.substring(lastIndex, match.index)
-          .replace(/^[,\-\(\)\s\t\n;]+/, '')
-          .replace(/[,\-\(\)\s\t\n;]+$/, '')
-          .trim();
-
-        const parenMatch = publisher.match(/(.*?)\s*\((.*?)$/);
-        if (parenMatch) {
-           const outside = parenMatch[1].trim();
-           let inside = parenMatch[2].replace(/\)$/, '').trim();
-           if (inside) {
-               inside = inside.replace(/Source:\s*/i, '').trim();
-               const firstInside = inside.split(',')[0].trim();
-               const isMonthOnly = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov|Dec)(\s+\d{1,2})?$/i.test(firstInside);
-               const isYearOrDate = /^\d{4}$/.test(firstInside) || /^(Q[1-4]\s+)?\d{4}$/i.test(firstInside) || /^[a-zA-Z]+\s+\d{1,2},?\s*\d{4}$/.test(firstInside) || /^[a-zA-Z]+\s+\d{4}$/.test(firstInside) || isMonthOnly;
-               publisher = (isYearOrDate && outside) ? outside : firstInside;
-           } else if (outside) {
-               publisher = outside;
-           }
-        } else {
-           publisher = publisher.split(',')[0].replace(/Source:\s*/i, '').trim();
-        }
-        
-        if (!publisher || publisher.length < 2) publisher = 'Source';
-        results.push({ publisher, url });
-        lastIndex = urlRegex.lastIndex;
-      }
-      return results;
-    }
+    // Link extraction utility has been moved to src/lib/linkUtils.ts
 
     // Pre-process tables to format specific cells (like "Key functionalities") into bullet points
     const formatCellAsBullets = (cell: any) => {
