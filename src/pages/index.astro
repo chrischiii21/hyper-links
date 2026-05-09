@@ -3,6 +3,27 @@ import RichTextCopier from '../components/RichTextCopier';
 import ReportProcessor from '../components/ReportProcessor';
 import ChangelogBanner from '../components/ChangelogBanner';
 import '../styles/global.css';
+
+// Fetch the latest commit on the server for immediate display
+let latestCommitMessage = "System Update: Optimized Laboratory Performance";
+try {
+  const response = await fetch('https://api.github.com/repos/chrischiii21/hyper-links/commits?per_page=1', {
+    headers: {
+      'User-Agent': 'Astro-Server'
+    }
+  });
+  if (response.ok) {
+    const data = await response.json();
+    if (data && data.length > 0) {
+      latestCommitMessage = data[0].commit.message;
+      console.log('Successfully fetched latest commit:', latestCommitMessage);
+    }
+  } else {
+    console.error('Failed to fetch commit:', response.status, response.statusText);
+  }
+} catch (err) {
+  console.error('Error fetching commit on server:', err);
+}
 ---
 
 <script>
@@ -44,9 +65,9 @@ import '../styles/global.css';
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 	</head>
 	<body class="antialiased min-h-screen bg-slate-50 font-sans">
-		<ChangelogBanner client:load />
+		<ChangelogBanner client:load message={latestCommitMessage} />
 
-		<nav class="sticky top-[40px] z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 py-4 mb-8">
+		<nav class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 py-4 mb-8">
 			<div class="max-w-6xl mx-auto px-4 flex items-center justify-between">
 				<div class="flex items-center gap-2 font-bold text-xl text-slate-900">
 					<div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
