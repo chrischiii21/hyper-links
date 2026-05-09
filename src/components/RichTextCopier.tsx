@@ -5,9 +5,13 @@ import {
   List, 
   Trash2, 
   CheckCircle, 
+  Check,
   Loader2, 
   ExternalLink,
-  Info
+  Info,
+  Wand2,
+  Share2,
+  LayoutGrid
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -299,150 +303,179 @@ export default function RichTextCopier() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto p-4 sm:p-8 space-y-8">
+    <div className="max-w-6xl mx-auto px-4 sm:px-8 space-y-12">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-4xl font-bold tracking-tight text-gray-900">Rich Text Copier</h1>
-        <p className="text-gray-500 max-w-lg mx-auto">
-          Extract links or sanitize bullet points into formatted rich text ready for Slack, Notion, or Wikis.
+      <div className="text-center space-y-4">
+        <h1 className="text-5xl font-black tracking-tighter text-slate-900 leading-tight">
+          Text <span className="text-indigo-600">Copier</span>
+        </h1>
+        <p className="text-slate-500 font-medium max-w-lg mx-auto leading-relaxed">
+          The ultimate utility for professional researchers. Sanitize bullets and extract citations with surgical precision.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
         {/* Input Panel */}
-        <section className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
+        <section className="bg-white rounded-[2.5rem] shadow-premium border border-slate-200 p-8 space-y-8 transition-all duration-500 hover:border-indigo-200">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Info className="w-5 h-5 text-blue-500" />
-              Input Text
-            </h2>
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-inner">
+                <Info className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-800 tracking-tight">Source Data</h2>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-0.5">Input Material</p>
+              </div>
+            </div>
             <button 
               onClick={() => setInputText('')}
-              className="text-gray-400 hover:text-red-500 transition-colors"
+              className="p-3 text-slate-300 hover:text-rose-500 transition-all rounded-xl hover:bg-rose-50 active:scale-95"
               title="Clear Input"
             >
-              <Trash2 className="w-5 h-5" />
+              <Trash2 className="w-6 h-6" />
             </button>
           </div>
           
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Paste your source text or messy bullet points here..."
-            className="w-full h-80 p-4 rounded-xl border border-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all resize-none font-mono text-sm leading-relaxed"
-          />
+          <div className="relative group">
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-3xl blur opacity-0 group-focus-within:opacity-10 transition duration-500"></div>
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Paste your source text or messy bullet points here..."
+              className="relative w-full h-[480px] p-8 rounded-[2rem] bg-slate-50 border-2 border-transparent focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all resize-none font-medium text-slate-600 leading-relaxed placeholder:text-slate-300"
+            />
+          </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button
               onClick={processLinks}
               disabled={!inputText || isLoading}
-              className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl font-medium transition-all shadow-lg shadow-blue-200 text-sm"
+              className="flex items-center justify-center gap-3 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:active:scale-100 text-white py-4 px-6 rounded-2xl font-bold transition-all shadow-xl shadow-indigo-100 premium-button"
             >
-              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
-              Process Links
+              {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Link className="w-5 h-5" />}
+              <span className="text-sm tracking-tight">Extract Links</span>
             </button>
             <button
               onClick={cleanBullets}
               disabled={!inputText || isLoading}
-              className="flex items-center justify-center gap-2 bg-gray-900 hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed text-white py-3 px-4 rounded-xl font-medium transition-all shadow-lg shadow-gray-200 text-sm"
+              className="flex items-center justify-center gap-3 bg-slate-900 hover:bg-black disabled:opacity-50 disabled:active:scale-100 text-white py-4 px-6 rounded-2xl font-bold transition-all shadow-xl shadow-slate-200 premium-button"
             >
-              <List className="w-4 h-4" />
-              Clean Bullets
-            </button>
-            <button
-              onClick={formatReport}
-              disabled={!inputText || isLoading}
-              className="relative flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed text-gray-500 py-3 px-4 rounded-xl font-medium transition-all text-sm group"
-            >
-              <Clipboard className="w-4 h-4" />
-              Format Report
-              <span className="absolute -top-10 left-1/2 -translate-x-1/2 bg-gray-900 text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                Under Development
-              </span>
+              <List className="w-5 h-5" />
+              <span className="text-sm tracking-tight">Sanitize Bullets</span>
             </button>
           </div>
 
           <AnimatePresence>
             {showDevNotice && (
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="bg-purple-50 border border-purple-200 text-purple-700 px-4 py-3 rounded-xl text-sm flex items-center gap-2"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-6 py-4 rounded-2xl text-sm font-medium flex items-center gap-3 shadow-sm"
               >
-                <Info className="w-4 h-4" />
-                This feature is currently under development for better performance.
+                <div className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
+                This sophisticated module is currently being optimized.
               </motion.div>
             )}
           </AnimatePresence>
         </section>
 
         {/* Output Panel */}
-        <section className="space-y-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 min-h-[440px] flex flex-col">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-lg font-semibold">Live Preview</h2>
+        <section className="space-y-8">
+          <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-800 p-8 min-h-[640px] flex flex-col relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] -mr-48 -mt-48 pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-[100px] -ml-32 -mb-32 pointer-events-none"></div>
+            
+            <div className="flex items-center justify-between mb-8 relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-white border border-white/10 shadow-inner">
+                  <Wand2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-tight">Refined Results</h2>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Live Engine</p>
+                  </div>
+                </div>
+              </div>
+              
               {outputHtml && (
                 <button
                   onClick={copyRichText}
                   className={cn(
-                    "flex items-center gap-2 py-2 px-4 rounded-lg font-medium transition-all",
+                    "flex items-center gap-2.5 py-3 px-6 rounded-xl font-bold transition-all premium-button",
                     copyStatus === 'copied' 
-                      ? "bg-green-100 text-green-700" 
-                      : "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                      ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" 
+                      : "bg-white text-slate-900 hover:bg-slate-100 shadow-xl"
                   )}
                 >
                   {copyStatus === 'copied' ? (
                     <>
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="w-5 h-5" />
                       Copied!
                     </>
                   ) : (
                     <>
-                      <Clipboard className="w-4 h-4" />
-                      Copy Rich Text
+                      <Clipboard className="w-5 h-5" />
+                      Copy Result
                     </>
                   )}
                 </button>
               )}
             </div>
 
-            <div className="flex-1 overflow-auto rounded-lg bg-gray-50 border border-gray-100 p-6">
+            <div className="flex-1 overflow-auto rounded-[2rem] bg-white/5 border border-white/5 p-8 relative z-10 custom-scrollbar">
               {outputHtml ? (
                 <div 
                   dangerouslySetInnerHTML={{ __html: outputHtml }} 
-                  className="prose prose-sm prose-blue max-w-none"
+                  className="prose-premium prose-invert text-slate-300 leading-relaxed"
                 />
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
-                  <ExternalLink className="w-12 h-12 opacity-20" />
-                  <p>Processed content will appear here</p>
+                <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6 text-center px-8">
+                  <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center border border-white/5 animate-float">
+                    <ExternalLink className="w-12 h-12 opacity-20" />
+                  </div>
+                  <div>
+                    <h4 className="text-slate-400 font-bold mb-2">Awaiting Intelligence</h4>
+                    <p className="text-sm font-medium opacity-60">Your processed data will appear here in a clean, professional format.</p>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Links Status (Optional debug/list) */}
+          {/* Links Status */}
           <AnimatePresence>
             {links.length > 0 && (
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="bg-blue-50 border border-blue-100 rounded-xl p-4"
+                exit={{ opacity: 0, y: 20 }}
+                className="bg-white rounded-[2rem] border border-slate-200 p-8 shadow-premium overflow-hidden relative"
               >
-                <h3 className="text-sm font-semibold text-blue-800 mb-3">Detected Sources ({links.length})</h3>
-                <div className="space-y-2">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50 rounded-full blur-3xl -mr-16 -mt-16"></div>
+                <div className="relative z-10 flex items-center justify-between mb-6">
+                  <h3 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Detected Citations ({links.length})</h3>
+                  <div className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded uppercase tracking-tighter">Verified</div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-10">
                   {links.map((link, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs text-blue-700 bg-white/50 p-2 rounded-lg">
-                      <span className="font-medium truncate max-w-[200px]">
-                        {link.publisher} ({link.year})
-                      </span>
+                    <div key={i} className="flex flex-col gap-1 p-4 bg-slate-50 border border-slate-100 rounded-2xl transition-all hover:bg-white hover:border-indigo-100 group">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-indigo-600 uppercase tracking-wider truncate max-w-[140px]">
+                          {link.publisher}
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-400">{link.year}</span>
+                      </div>
                       {link.loading ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <div className="flex items-center gap-2 mt-1">
+                          <Loader2 className="w-3 h-3 animate-spin text-slate-300" />
+                          <div className="h-2 w-24 bg-slate-200 rounded-full animate-pulse" />
+                        </div>
                       ) : (
-                        <span className="truncate max-w-[150px] opacity-60 italic">
-                          {link.h1 || link.title || 'No Title'}
+                        <span className="text-xs font-semibold text-slate-700 truncate group-hover:text-slate-900 transition-colors">
+                          {link.h1 || link.title || 'Source Validated'}
                         </span>
                       )}
                     </div>
@@ -458,27 +491,30 @@ export default function RichTextCopier() {
       <AnimatePresence>
         {toastMessage && (
           <motion.div
-            initial={{ opacity: 0, y: 50, scale: 0.95 }}
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 50, scale: 0.95 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
             className={cn(
-              "fixed bottom-8 right-8 px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 z-50",
-              toastMessage.type === 'success' ? 'bg-slate-900 text-white' : 
-              toastMessage.type === 'error' ? 'bg-red-600 text-white' :
-              'bg-blue-600 text-white'
+              "fixed bottom-10 right-10 px-8 py-4 rounded-[2rem] shadow-2xl flex items-center gap-4 z-[200] border border-white/10 backdrop-blur-xl",
+              toastMessage.type === 'success' ? 'bg-slate-900/95 text-white' : 
+              toastMessage.type === 'error' ? 'bg-rose-600 text-white' :
+              'bg-indigo-600 text-white'
             )}
           >
             <div className={cn(
-              "rounded-full p-1",
-              toastMessage.type === 'success' ? 'bg-green-500' :
-              toastMessage.type === 'error' ? 'bg-red-500' :
-              'bg-blue-500'
+              "rounded-xl p-2 shadow-inner",
+              toastMessage.type === 'success' ? 'bg-emerald-500' :
+              toastMessage.type === 'error' ? 'bg-rose-500' :
+              'bg-white/20'
             )}>
-              {toastMessage.type === 'success' ? <CheckCircle className="w-4 h-4 text-white" /> : 
-               toastMessage.type === 'error' ? <span className="w-4 h-4 text-white font-bold flex items-center justify-center" style={{fontSize: '10px'}}>!</span> :
-               <Loader2 className="w-4 h-4 text-white animate-spin" />}
+              {toastMessage.type === 'success' ? <CheckCircle className="w-5 h-5 text-white" /> : 
+               toastMessage.type === 'error' ? <span className="w-5 h-5 text-white font-black flex items-center justify-center">!</span> :
+               <Loader2 className="w-5 h-5 text-white animate-spin" />}
             </div>
-            <span className="text-sm font-medium">{toastMessage.title}</span>
+            <div>
+              <p className="text-[10px] font-black text-white/40 uppercase tracking-widest leading-none mb-1">System Message</p>
+              <span className="text-sm font-bold tracking-tight">{toastMessage.title}</span>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

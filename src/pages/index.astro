@@ -27,28 +27,30 @@ try {
 ---
 
 <script>
-	// Handle view switching
+	// Handle view switching with premium styles
 	const copierBtn = document.getElementById('view-copier');
 	const processorBtn = document.getElementById('view-processor');
 	const copierView = document.getElementById('copier-view');
 	const processorView = document.getElementById('processor-view');
 
+	const setActive = (active: HTMLElement, inactive: HTMLElement) => {
+		active.classList.add('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-100');
+		active.classList.remove('text-slate-500', 'hover:text-slate-900', 'hover:bg-white/50');
+		
+		inactive.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-100');
+		inactive.classList.add('text-slate-500', 'hover:text-slate-900', 'hover:bg-white/50');
+	};
+
 	copierBtn?.addEventListener('click', () => {
 		copierView?.classList.remove('hidden');
 		processorView?.classList.add('hidden');
-		copierBtn.classList.add('bg-blue-600', 'text-white');
-		copierBtn.classList.remove('text-slate-600', 'hover:bg-slate-100');
-		processorBtn?.classList.remove('bg-blue-600', 'text-white');
-		processorBtn?.classList.add('text-slate-600', 'hover:bg-slate-100');
+		if (copierBtn && processorBtn) setActive(copierBtn, processorBtn);
 	});
 
 	processorBtn?.addEventListener('click', () => {
 		processorView?.classList.remove('hidden');
 		copierView?.classList.add('hidden');
-		processorBtn.classList.add('bg-blue-600', 'text-white');
-		processorBtn.classList.remove('text-slate-600', 'hover:bg-slate-100');
-		copierBtn?.classList.remove('bg-blue-600', 'text-white');
-		copierBtn?.classList.add('text-slate-600', 'hover:bg-slate-100');
+		if (processorBtn && copierBtn) setActive(processorBtn, copierBtn);
 	});
 </script>
 
@@ -67,27 +69,35 @@ try {
 	<body class="antialiased min-h-screen bg-slate-50 font-sans">
 		<ChangelogBanner client:load message={latestCommitMessage} />
 
-		<nav class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 py-4 mb-8">
-			<div class="max-w-6xl mx-auto px-4 flex items-center justify-between">
-				<div class="flex items-center gap-2 font-bold text-xl text-slate-900">
-					<div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-						<span class="text-white text-sm">H</span>
+		<nav class="sticky top-[40px] z-50 py-6 px-4">
+			<div class="max-w-6xl mx-auto">
+				<div class="flex flex-col md:flex-row items-center justify-between gap-6 bg-white/70 backdrop-blur-xl border border-white/40 p-3 pr-4 rounded-[2rem] shadow-premium">
+					<div class="flex items-center gap-4 px-4">
+						<div class="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 rotate-3 transition-transform hover:rotate-0 cursor-default">
+							<span class="text-white font-black text-xl tracking-tighter italic">H</span>
+						</div>
+						<div>
+							<h1 class="font-black text-xl tracking-tight text-slate-900 leading-none">Hyperlinks</h1>
+							<p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Director's Suite</p>
+						</div>
 					</div>
-					Hyperlinks
-				</div>
-				<div class="flex bg-slate-100 p-1 rounded-xl">
-					<button 
-						id="view-copier"
-						class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-blue-600 text-white"
-					>
-						Text Copier
-					</button>
-					<button 
-						id="view-processor"
-						class="px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-600 hover:bg-slate-100"
-					>
-						Report Processor
-					</button>
+					
+					<div class="flex items-center gap-1 bg-slate-900/5 p-1.5 rounded-2xl border border-slate-900/5">
+						<button 
+							id="view-copier"
+							class="px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 bg-indigo-600 text-white shadow-lg shadow-indigo-100 flex items-center gap-2 premium-button"
+						>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+							Text Copier
+						</button>
+						<button 
+							id="view-processor"
+							class="px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 text-slate-500 hover:text-slate-900 hover:bg-white/50 flex items-center gap-2 premium-button"
+						>
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+							Report Processor
+						</button>
+					</div>
 				</div>
 			</div>
 		</nav>

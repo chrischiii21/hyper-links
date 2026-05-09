@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { PDFParse } from 'pdf-parse';
-import { generateSourceListHtml } from '../../lib/linkUtils';
+import { generateSourceListHtml, extractLinks } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
   "Executive Summary",
@@ -117,9 +117,12 @@ export const POST: APIRoute = async ({ request }) => {
           if (remainingText && remainingText.trim().length > 0) {
             // SPECIAL CASE: If this is a "Sources" header with inline links, format them beautifully
             if (innerText.toLowerCase() === 'sources') {
-              const linksHtml = generateSourceListHtml(remainingText);
-              if (linksHtml !== remainingText) {
-                $(el).replaceWith(`${h2Html}\n${linksHtml}`);
+              const links = extractLinks(remainingText);
+              if (links.length > 0) {
+                const pluralizedLabel = links.length === 1 ? 'Source' : 'Sources';
+                const pluralizedH2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${pluralizedLabel}</span></h2>`;
+                const linksHtml = generateSourceListHtml(remainingText);
+                $(el).replaceWith(`${pluralizedH2Html}\n${linksHtml}`);
                 return;
               }
             }
@@ -155,14 +158,17 @@ export const POST: APIRoute = async ({ request }) => {
       const $h2 = $(h2El);
       if ($h2.text().trim().toLowerCase() === 'sources') {
         let $next = $h2.next();
-        while ($next.length > 0 && !($next.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes($next[0].tagName))) {
+        if ($next.length > 0 && !($next.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes($next[0].tagName))) {
           const text = $next.text().trim();
-          const linksHtml = generateSourceListHtml(text);
-          if (linksHtml !== text) {
+          const links = extractLinks(text);
+          if (links.length > 0) {
+            // Pluralize the header based on count
+            const label = links.length === 1 ? 'Source' : 'Sources';
+            $h2.find('span').text(label);
+            
+            const linksHtml = generateSourceListHtml(text);
             $next.replaceWith(linksHtml);
           }
-          $next = $h2.nextAll().filter((i, el) => !$(el).is($next)).first();
-          break; 
         }
       }
     });
