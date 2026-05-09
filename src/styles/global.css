@@ -31,11 +31,11 @@
   }
   
   .prose-premium ul {
-    @apply list-none p-0 space-y-2;
+    @apply list-none p-0 space-y-3;
   }
   
   .prose-premium li {
-    @apply relative pl-6 before:content-[''] before:absolute before:left-0 before:top-[0.6em] before:w-2 before:h-2 before:bg-indigo-500 before:rounded-full;
+    @apply relative pl-7 text-[15px] leading-relaxed before:content-[''] before:absolute before:left-1 before:top-[0.65em] before:w-1.5 before:h-1.5 before:bg-indigo-500 before:rounded-full before:shadow-[0_0_8px_rgba(79,70,229,0.4)];
   }
   
   .prose-premium a {

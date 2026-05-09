@@ -91,7 +91,7 @@ export default function RichTextCopier() {
       
       // Generate Rich HTML for links
       const heading = processedLinks.length === 1 ? 'Source' : 'Sources';
-      let html = `<div class="prose prose-sm max-w-none"><h2>${heading}</h2><ul>`;
+      let html = `<div class="prose-premium"><h2>${heading}</h2><ul>`;
       
       processedLinks.forEach(link => {
         const linkText = link.publisher || 'Source';
@@ -125,7 +125,7 @@ export default function RichTextCopier() {
       rawItems = inputText.split('\n');
     }
 
-    let cleanHTML = '<div class="prose"><ul>';
+    let cleanHTML = '<div class="prose-premium"><ul>';
     
     rawItems.forEach(item => {
       // Strip leading bullets (•, -, etc.) and all following whitespace
@@ -382,20 +382,20 @@ export default function RichTextCopier() {
 
         {/* Output Panel */}
         <section className="space-y-8">
-          <div className="bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-800 p-8 min-h-[640px] flex flex-col relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] -mr-48 -mt-48 pointer-events-none"></div>
+          <div className="bg-white rounded-[2.5rem] shadow-premium border border-slate-200 p-8 min-h-[640px] flex flex-col relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/5 rounded-full blur-[120px] -mr-48 -mt-48 pointer-events-none"></div>
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-[100px] -ml-32 -mb-32 pointer-events-none"></div>
             
             <div className="flex items-center justify-between mb-8 relative z-10">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center text-white border border-white/10 shadow-inner">
+                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 border border-indigo-100 shadow-inner">
                   <Wand2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-white tracking-tight">Refined Results</h2>
+                  <h2 className="text-xl font-bold text-slate-800 tracking-tight">Refined Results</h2>
                   <div className="flex items-center gap-2 mt-0.5">
                     <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Live Engine</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Live Engine</p>
                   </div>
                 </div>
               </div>
@@ -407,7 +407,7 @@ export default function RichTextCopier() {
                     "flex items-center gap-2.5 py-3 px-6 rounded-xl font-bold transition-all premium-button",
                     copyStatus === 'copied' 
                       ? "bg-emerald-500 text-white shadow-lg shadow-emerald-500/20" 
-                      : "bg-white text-slate-900 hover:bg-slate-100 shadow-xl"
+                      : "bg-slate-900 text-white hover:bg-black shadow-xl"
                   )}
                 >
                   {copyStatus === 'copied' ? (
@@ -425,15 +425,15 @@ export default function RichTextCopier() {
               )}
             </div>
 
-            <div className="flex-1 overflow-auto rounded-[2rem] bg-white/5 border border-white/5 p-8 relative z-10 custom-scrollbar">
+            <div className="flex-1 overflow-auto rounded-[2rem] bg-slate-50 border border-slate-100 p-8 relative z-10 custom-scrollbar">
               {outputHtml ? (
                 <div 
                   dangerouslySetInnerHTML={{ __html: outputHtml }} 
-                  className="prose-premium prose-invert text-slate-300 leading-relaxed"
+                  className="prose-premium text-slate-600 leading-relaxed"
                 />
               ) : (
-                <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6 text-center px-8">
-                  <div className="w-24 h-24 bg-white/5 rounded-full flex items-center justify-center border border-white/5 animate-float">
+                <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-6 text-center px-8">
+                  <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center border border-slate-100 shadow-sm animate-float">
                     <ExternalLink className="w-12 h-12 opacity-20" />
                   </div>
                   <div>
