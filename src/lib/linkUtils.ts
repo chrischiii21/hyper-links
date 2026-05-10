@@ -16,10 +16,15 @@ export function extractLinks(text: string): LinkData[] {
   const results: LinkData[] = [];
   
   // Clean up "Sources" header at the very beginning
-  let cleanText = text.replace(/^Sources?[\s\n]*/i, '').trim();
+  let cleanText = text.replace(/^Sources?[:\s\n]*/i, '').trim();
+  
+  // Strip HTML tags to avoid matching URLs with trailing </strong> etc.
+  cleanText = cleanText.replace(/<[^>]*>/g, ' ');
   
   // Find all URLs in the text
-  const urlRegex = /(https?:\/\/[^\s\)]+)/g;
+  // Find all URLs in the text - supporting http(s)://, www., and common .com/.org etc. domains
+  // We exclude trailing punctuation to handle (Source: ... http://link.com) correctly
+  const urlRegex = /((?:https?:\/\/|www\.)[^\s\)\*>]+|(?:[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?))/gi;
   let match;
   let lastIndex = 0;
   
@@ -32,8 +37,8 @@ export function extractLinks(text: string): LinkData[] {
     
     // Clean up the "publisher" text
     let publisher = beforeUrl
-      .replace(/^[,\-\(\)\s\t\n;]+/, '') // Leading junk
-      .replace(/[,\-\(\)\s\t\n;]+$/, '') // Trailing junk
+      .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014]+/, '') // Leading junk (added : * em-dash en-dash)
+      .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014]+$/, '') // Trailing junk
       .trim();
 
     // Handle the case where there are parentheses before the URL
@@ -71,7 +76,13 @@ export function extractLinks(text: string): LinkData[] {
         publisher = 'Source';
     }
     
-    results.push({ publisher, url });
+    // Ensure URL has a protocol
+    let finalUrl = url;
+    if (!url.toLowerCase().startsWith('http')) {
+        finalUrl = 'https://' + url;
+    }
+    
+    results.push({ publisher, url: finalUrl });
     lastIndex = urlRegex.lastIndex;
   }
   

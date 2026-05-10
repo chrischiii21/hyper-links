@@ -1,7 +1,5 @@
 import type { APIRoute } from 'astro';
-import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
-import { PDFParse } from 'pdf-parse';
 import { generateSourceListHtml, extractLinks } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
@@ -19,7 +17,6 @@ const TARGET_TITLES = [
 
 const SUB_HEADERS = [
   "Company Overview",
-  "Value Proposition",
   "Product Overview",
   "Business Model",
   "Pricing Structure",
@@ -70,14 +67,21 @@ export const POST: APIRoute = async ({ request }) => {
     const fileName = file.name.toLowerCase();
     
     if (fileName.endsWith('.docx')) {
+      const { default: mammoth } = await import('mammoth');
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.convertToHtml({ buffer: Buffer.from(arrayBuffer) });
       htmlContent = result.value;
     } else if (fileName.endsWith('.pdf')) {
-      const arrayBuffer = await file.arrayBuffer();
-      const parser = new PDFParse({ data: new Uint8Array(arrayBuffer) });
-      const result = await parser.getText();
-      htmlContent = result.text.split('\n').map(line => `<p>${line}</p>`).join('');
+      try {
+        const { PDFParse } = await import('pdf-parse');
+        const arrayBuffer = await file.arrayBuffer();
+        const parser = new PDFParse({ data: new Uint8Array(arrayBuffer) });
+        const result = await parser.getText();
+        htmlContent = result.text.split('\n').map(line => `<p>${line}</p>`).join('');
+      } catch (pdfError) {
+        console.error('PDF parsing library error:', pdfError);
+        throw new Error('PDF processing is currently unavailable on the server. Please try DOCX or paste text.');
+      }
     } else {
       const rawText = await file.text();
       htmlContent = rawText.split('\n').map(line => `<p>${line}</p>`).join('');
@@ -85,21 +89,35 @@ export const POST: APIRoute = async ({ request }) => {
 
     const $ = cheerio.load(htmlContent);
 
+    // PRE-PROCESS: Remove empty paragraphs or those containing only &nbsp; or <br>
+    $('p, div, span').each((_, el) => {
+      const $el = $(el);
+      const text = $el.text().trim();
+      const html = $el.html() || '';
+      if (!text && (html === '' || html === '&nbsp;' || html === '<br>' || html === '<br/>')) {
+        $el.remove();
+      }
+    });
+
     // 1. Process Sub-Headers: Find target phrases and convert them to <h2> with font-weight normal
     const escapedSubHeaders = SUB_HEADERS.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
     
     // Regex pattern to match optional bullets, dashes, Roman numerals, letters, numbers, and em/en dashes
     const prefixPattern = `(?:[o\\-\\u2013\\u2014\\u2022\\s]*)(?:(?:[A-Za-z0-9]+[.\\-\\u2013\\u2014)\\s]+)*)?`;
     
-    // Match the sub-header text, ignoring complex prefixes.
-    // Captures the title (Group 1) and any remaining text (Group 2)
-    const subHeaderRegex = new RegExp(`^${prefixPattern}(${escapedSubHeaders})(?:\\s*[:\\-\\u2013\\u2014]\\s*(.+)|\\s*)$`, 'is');
+    // Match the sub-header text, ignoring complex prefixes. Optional colon/dash at the end.
+    const subHeaderRegex = new RegExp(`^${prefixPattern}(${escapedSubHeaders})\\s*[:\\-\\u2013\\u2014]?\\s*(.*)$`, 'is');
     
     // Regex for HTML matching to preserve tags
     const titleRegexHtml = new RegExp(`^(?:<[^>]+>|\\s)*${prefixPattern}(${escapedSubHeaders})(?:<[^>]+>|\\s)*[:\\-\\u2013\\u2014]?(?:<[^>]+>|\\s)*`, 'i');
 
-    $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b').each((_, el) => {
-      const text = $(el).text().trim();
+    $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b, em, i').each((_, el) => {
+      const $el = $(el);
+      const text = $el.text().trim();
+      
+      // Clean up the text for comparison (remove trailing colon etc)
+      const cleanCompareText = text.replace(/[:\-\u2013\u2014]$/, '').trim();
+      
       const match = subHeaderRegex.exec(text);
       
       if (match) {
@@ -111,18 +129,32 @@ export const POST: APIRoute = async ({ request }) => {
           innerText = '%%COMPANY_OVERVIEW_PLACEHOLDER%%';
         }
         
+        // SPECIAL CASE: Ensure we don't convert a main section title into a sub-header
+        const matchesMainTitle = TARGET_TITLES.some(title => 
+          text.toLowerCase().includes(title.toLowerCase()) && text.length < title.length + 5
+        );
+        if (matchesMainTitle) return;
+
         const h2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
         
-        if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(el.tagName)) {
+        if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'em', 'i', 'strong', 'b'].includes(el.tagName)) {
           if (remainingText && remainingText.trim().length > 0) {
             // SPECIAL CASE: If this is a "Sources" header with inline links, format them beautifully
-            if (innerText.toLowerCase() === 'sources') {
+            if (innerText.toLowerCase().startsWith('source')) {
               const links = extractLinks(remainingText);
               if (links.length > 0) {
                 const pluralizedLabel = links.length === 1 ? 'Source' : 'Sources';
                 const pluralizedH2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${pluralizedLabel}</span></h2>`;
                 const linksHtml = generateSourceListHtml(remainingText);
-                $(el).replaceWith(`${pluralizedH2Html}\n${linksHtml}`);
+                
+                // If the element is a child of another block (like span inside p), 
+                // we should try to replace the parent if the parent is just a wrapper.
+                const $parent = $(el).parent();
+                if ($parent.length > 0 && ['p', 'div'].includes($parent[0].tagName) && $parent.text().trim() === text) {
+                  $parent.replaceWith(`${pluralizedH2Html}\n${linksHtml}`);
+                } else {
+                  $(el).replaceWith(`${pluralizedH2Html}\n${linksHtml}`);
+                }
                 return;
               }
             }
@@ -153,21 +185,108 @@ export const POST: APIRoute = async ({ request }) => {
       }
     });
 
-    // POST-PROCESS: Find "Sources" headers and beautify the content following them
+    // POST-PROCESS: Group Competition entries into a single bulleted list
     $('h2[data-subheader="true"]').each((_, h2El) => {
       const $h2 = $(h2El);
-      if ($h2.text().trim().toLowerCase() === 'sources') {
-        let $next = $h2.next();
-        if ($next.length > 0 && !($next.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes($next[0].tagName))) {
-          const text = $next.text().trim();
+      const title = $h2.text().trim().toLowerCase();
+      const compTitles = ['platform competition', 'adjacent competition', 'point solution competition'];
+      
+      if (compTitles.includes(title)) {
+        let $currentH2 = $h2;
+        let compEntries: { title: string, body: string }[] = [];
+        let elementsToRemove: any[] = [];
+
+        // Look for consecutive competition entries
+        while ($currentH2.length > 0) {
+          const currentTitle = $currentH2.text().trim().replace(/:$/, '').trim();
+          const currentTitleLower = currentTitle.toLowerCase();
+          
+          if (compTitles.includes(currentTitleLower)) {
+            const $next = $currentH2.next();
+            if ($next.length > 0 && !(['h1', 'h2', 'h3'].includes($next[0].tagName))) {
+              compEntries.push({
+                title: currentTitle,
+                body: $next.text().trim()
+              });
+              elementsToRemove.push($currentH2, $next);
+              
+              // Jump to the next possible H2
+              let $candidate = $next.next();
+              while ($candidate.length > 0 && $candidate[0].tagName !== 'h2') {
+                $candidate = $candidate.next();
+              }
+              $currentH2 = $candidate;
+              continue;
+            }
+          }
+          break;
+        }
+
+        if (compEntries.length > 0) {
+          let listHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+          compEntries.forEach(entry => {
+            listHtml += `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${entry.title}:</strong> ${entry.body}</li>`;
+          });
+          listHtml += '</ul>';
+          
+          // Replace the first element and remove the rest
+          elementsToRemove[0].replaceWith(listHtml);
+          for (let i = 1; i < elementsToRemove.length; i++) {
+            elementsToRemove[i].remove();
+          }
+        }
+      }
+    });
+
+    // POST-PROCESS: Find "Sources" headers and beautify all consecutive content following them
+    $('h2[data-subheader="true"]').each((_, h2El) => {
+      const $h2 = $(h2El);
+      const title = $h2.text().trim().toLowerCase();
+      if (title === 'sources' || title === 'source') {
+        let $current = $h2.next();
+        let allLinks: LinkData[] = [];
+        let elementsToReplace: any[] = [];
+
+        // Collect all consecutive paragraphs that contain links
+        while ($current.length > 0) {
+          const tagName = $current[0].tagName;
+          const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
+          if (isHeader) break;
+
+          const text = $current.text().trim();
+          
+          // SAFETY: Stop if this text matches any of the main section titles
+          const matchesMainTitle = TARGET_TITLES.some(title => 
+            text.toLowerCase().includes(title.toLowerCase()) && text.length < title.length + 10
+          );
+          if (matchesMainTitle) break;
+
           const links = extractLinks(text);
           if (links.length > 0) {
-            // Pluralize the header based on count
-            const label = links.length === 1 ? 'Source' : 'Sources';
-            $h2.find('span').text(label);
-            
-            const linksHtml = generateSourceListHtml(text);
-            $next.replaceWith(linksHtml);
+            allLinks.push(...links);
+            elementsToReplace.push($current);
+            $current = $current.next();
+          } else {
+            break;
+          }
+        }
+
+        if (allLinks.length > 0) {
+          // Pluralize the header based on total count
+          const label = allLinks.length === 1 ? 'Source' : 'Sources';
+          $h2.find('span').text(label);
+          
+          // Generate a single consolidated list
+          let consolidatedHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+          allLinks.forEach(link => {
+            consolidatedHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
+          });
+          consolidatedHtml += '</ul>';
+
+          // Replace the first element with the list and remove the others
+          elementsToReplace[0].replaceWith(consolidatedHtml);
+          for (let i = 1; i < elementsToReplace.length; i++) {
+            elementsToReplace[i].remove();
           }
         }
       }
@@ -347,12 +466,17 @@ export const POST: APIRoute = async ({ request }) => {
           $body(boldEl).replaceWith($body(boldEl).html() || '');
         });
 
-        // Apply strict inline unbolding styles for the clipboard
+        // Apply strict inline unbolding and un-italicizing styles for the clipboard
         const isMainTitle = !$body(el).attr('data-subheader');
         const fontSize = isMainTitle ? '1.5em' : '1.25em';
         const marginTop = isMainTitle ? '2em' : '1.5em';
         
         $body(el).attr('style', `font-weight: 300; color: #1e293b; margin-top: ${marginTop}; margin-bottom: 0.5em; font-size: ${fontSize};`);
+
+        // Remove <em> and <i> tags inside headers too
+        $body(el).find('em, i').each((_, italicEl) => {
+          $body(italicEl).replaceWith($body(italicEl).html() || '');
+        });
 
         // Wrap inner text to force word processors to respect it
         const inner = $body(el).html() || '';
@@ -372,8 +496,11 @@ export const POST: APIRoute = async ({ request }) => {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Extraction error:', error);
-    return new Response(JSON.stringify({ error: 'Failed to process document' }), { status: 500 });
+    return new Response(JSON.stringify({ 
+      error: error.message || 'Failed to process document',
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    }), { status: 500 });
   }
 };

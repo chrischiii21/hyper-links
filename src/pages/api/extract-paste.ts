@@ -18,7 +18,6 @@ const TARGET_TITLES = [
 
 const SUB_HEADERS = [
   "Company Overview",
-  "Value Proposition",
   "Product Overview",
   "Business Model",
   "Pricing Structure",
@@ -113,6 +112,16 @@ export const POST: APIRoute = async ({ request }) => {
         const rawHtml = await marked.parse(rawMarkdown);
         const $ = cheerio.load(rawHtml, null, false);
 
+        // PRE-PROCESS: Remove empty paragraphs or those containing only &nbsp; or <br>
+        $('p, div, span').each((_, el) => {
+          const $el = $(el);
+          const text = $el.text().trim();
+          const html = $el.html() || '';
+          if (!text && (html === '' || html === '&nbsp;' || html === '<br>' || html === '<br/>')) {
+            $el.remove();
+          }
+        });
+
         // --- TABLE BULLET FORMATTING (Same as extract.ts) ---
         const formatCellAsBullets = (cell: any) => {
           let rawHtml = cell.html() || '';
@@ -178,10 +187,10 @@ export const POST: APIRoute = async ({ request }) => {
         // --- SUB-HEADER PROCESSING (Same as extract.ts) ---
         const escapedSubHeaders = SUB_HEADERS.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
         const prefixPattern = `(?:[o\\-\\u2013\\u2014\\u2022\\s]*)(?:(?:[A-Za-z0-9]+[.\\-\\u2013\\u2014)\\s]+)*)?`;
-        const subHeaderRegex = new RegExp(`^${prefixPattern}(${escapedSubHeaders})(?:\\s*[:\\-\\u2013\\u2014]\\s*(.+)|\\s*)$`, 'is');
+        const subHeaderRegex = new RegExp(`^${prefixPattern}(${escapedSubHeaders})\\s*[:\\-\\u2013\\u2014]?\\s*(.*)$`, 'is');
         const titleRegexHtml = new RegExp(`^(?:<[^>]+>|\\s)*${prefixPattern}(${escapedSubHeaders})(?:<[^>]+>|\\s)*[:\\-\\u2013\\u2014]?(?:<[^>]+>|\\s)*`, 'i');
 
-        $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b').each((_, el) => {
+        $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b, em, i').each((_, el) => {
           const text = $(el).text().trim();
           const match = subHeaderRegex.exec(text);
           
@@ -189,13 +198,15 @@ export const POST: APIRoute = async ({ request }) => {
             let innerText = match[1];
             const remainingText = match[2];
             
-            if (innerText.toLowerCase() === 'company overview') {
-              innerText = '%%COMPANY_OVERVIEW_PLACEHOLDER%%';
-            }
-            
+            // SPECIAL CASE: Ensure we don't convert a main section title into a sub-header
+            const matchesMainTitle = TARGET_TITLES.some(title => 
+              text.toLowerCase().includes(title.toLowerCase()) && text.length < title.length + 5
+            );
+            if (matchesMainTitle) return;
+
             const h2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
             
-            if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(el.tagName)) {
+            if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'em', 'i', 'strong', 'b'].includes(el.tagName)) {
               if (remainingText && remainingText.trim().length > 0) {
                 // SPECIAL CASE: Beautify links for Sources
                 if (innerText.toLowerCase() === 'sources') {
@@ -243,21 +254,105 @@ export const POST: APIRoute = async ({ request }) => {
           }
         });
 
-        // POST-PROCESS: Find "Sources" headers and beautify the content following them
+        // POST-PROCESS: Group Competition entries into a single bulleted list
         $('h2[data-subheader="true"]').each((_, h2El) => {
           const $h2 = $(h2El);
-          if ($h2.text().trim().toLowerCase() === 'sources') {
-            const $next = $h2.next();
-            if ($next.length > 0 && !($next.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes($next[0].tagName))) {
-              const text = $next.text().trim();
+          const title = $h2.text().trim().toLowerCase();
+          const compTitles = ['platform competition', 'adjacent competition', 'point solution competition'];
+          
+          if (compTitles.includes(title)) {
+            let $currentH2 = $h2;
+            let compEntries: { title: string, body: string }[] = [];
+            let elementsToRemove: any[] = [];
+
+            // Look for consecutive competition entries
+            while ($currentH2.length > 0) {
+              const currentTitle = $currentH2.text().trim().replace(/:$/, '').trim();
+              const currentTitleLower = currentTitle.toLowerCase();
+              
+              if (compTitles.includes(currentTitleLower)) {
+                const $next = $currentH2.next();
+                if ($next.length > 0 && !(['h1', 'h2', 'h3'].includes($next[0].tagName))) {
+                  compEntries.push({
+                    title: currentTitle,
+                    body: $next.text().trim()
+                  });
+                  elementsToRemove.push($currentH2, $next);
+                  
+                  // Jump to the next possible H2
+                  let $candidate = $next.next();
+                  while ($candidate.length > 0 && $candidate[0].tagName !== 'h2') {
+                    $candidate = $candidate.next();
+                  }
+                  $currentH2 = $candidate;
+                  continue;
+                }
+              }
+              break;
+            }
+
+            if (compEntries.length > 0) {
+              let listHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+              compEntries.forEach(entry => {
+                listHtml += `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${entry.title}:</strong> ${entry.body}</li>`;
+              });
+              listHtml += '</ul>';
+              
+              // Replace the first element and remove the rest
+              elementsToRemove[0].replaceWith(listHtml);
+              for (let i = 1; i < elementsToRemove.length; i++) {
+                elementsToRemove[i].remove();
+              }
+            }
+          }
+        });
+
+        // POST-PROCESS: Find "Sources" headers and beautify all consecutive content following them
+        $('h2[data-subheader="true"]').each((_, h2El) => {
+          const $h2 = $(h2El);
+          const title = $h2.text().trim().toLowerCase();
+          if (title === 'sources' || title === 'source') {
+            let $current = $h2.next();
+            let allLinks: LinkData[] = [];
+            let elementsToReplace: any[] = [];
+
+            // Collect all consecutive paragraphs that contain links
+            while ($current.length > 0) {
+              const tagName = $current[0].tagName;
+              const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
+              if (isHeader) break;
+
+              const text = $current.text().trim();
+              
+              // SAFETY: Stop if this text matches any of the main section titles
+              const matchesMainTitle = TARGET_TITLES.some(title => 
+                text.toLowerCase().includes(title.toLowerCase()) && text.length < title.length + 10
+              );
+              if (matchesMainTitle) break;
+
               const links = extractLinks(text);
               if (links.length > 0) {
-                // Pluralize the header based on count
-                const label = links.length === 1 ? 'Source' : 'Sources';
-                $h2.find('span').text(label);
-                
-                const linksHtml = generateSourceListHtml(text);
-                $next.replaceWith(linksHtml);
+                allLinks.push(...links);
+                elementsToReplace.push($current);
+                $current = $current.next();
+              } else {
+                break;
+              }
+            }
+
+            if (allLinks.length > 0) {
+              const label = allLinks.length === 1 ? 'Source' : 'Sources';
+              $h2.find('span').text(label);
+              
+              let consolidatedHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+              allLinks.forEach(link => {
+                consolidatedHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
+              });
+              consolidatedHtml += '</ul>';
+
+              elementsToReplace[0].replaceWith(consolidatedHtml);
+              for (let i = 1; i < elementsToReplace.length; i++) {
+                elementsToReplace[i].remove();
               }
             }
           }
@@ -279,12 +374,17 @@ export const POST: APIRoute = async ({ request }) => {
             $final(boldEl).replaceWith($final(boldEl).html() || '');
           });
 
-          // Apply strict inline unbolding styles
+          // Apply strict inline unbolding and un-italicizing styles
           const isMainTitle = !$(el).attr('data-subheader');
           const fontSize = isMainTitle ? '1.5em' : '1.25em';
           const marginTop = isMainTitle ? '2em' : '1.5em';
           
           $final(el).attr('style', `font-weight: 300; color: #1e293b; margin-top: ${marginTop}; margin-bottom: 0.5em; font-size: ${fontSize};`);
+
+          // Remove <em> and <i> tags inside headers too
+          $final(el).find('em, i').each((_, italicEl) => {
+            $final(italicEl).replaceWith($final(italicEl).html() || '');
+          });
 
           // Wrap inner text to force word processors to respect it
           const inner = $final(el).html() || '';
