@@ -69,35 +69,32 @@ try {
 	<body class="antialiased min-h-screen bg-slate-50 font-sans">
 		<ChangelogBanner client:load message={latestCommitMessage} />
 
-		<nav class="sticky top-[40px] z-50 py-6 px-4">
-			<div class="max-w-6xl mx-auto">
-				<div class="flex flex-col md:flex-row items-center justify-between gap-6 bg-white/70 backdrop-blur-xl border border-white/40 p-3 pr-4 rounded-[2rem] shadow-premium">
-					<div class="flex items-center gap-4 px-4">
-						<div class="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-200 rotate-3 transition-transform hover:rotate-0 cursor-default">
-							<span class="text-white font-black text-xl tracking-tighter italic">H</span>
-						</div>
-						<div>
-							<h1 class="font-black text-xl tracking-tight text-slate-900 leading-none">Hyperlinks</h1>
-							<p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">Director's Suite</p>
-						</div>
+		<nav class="sticky top-[40px] z-50 bg-white/70 backdrop-blur-xl border-b border-slate-200/60 py-3 px-6">
+			<div class="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+				<div class="flex items-center gap-4">
+					<div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100 rotate-3 transition-transform hover:rotate-0 cursor-default">
+						<span class="text-white font-black text-lg tracking-tighter italic">H</span>
 					</div>
-					
-					<div class="flex items-center gap-1 bg-slate-900/5 p-1.5 rounded-2xl border border-slate-900/5">
-						<button 
-							id="view-copier"
-							class="px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 bg-indigo-600 text-white shadow-lg shadow-indigo-100 flex items-center gap-2 premium-button"
-						>
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-							Text Copier
-						</button>
-						<button 
-							id="view-processor"
-							class="px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 text-slate-500 hover:text-slate-900 hover:bg-white/50 flex items-center gap-2 premium-button"
-						>
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-							Report Processor
-						</button>
+					<div>
+						<h1 class="font-black text-lg tracking-tight text-slate-900 leading-none">Hyperlinks</h1>
 					</div>
+				</div>
+				
+				<div class="flex items-center gap-1 bg-slate-900/5 p-1 rounded-xl border border-slate-900/5">
+					<button 
+						id="view-copier"
+						class="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-300 bg-indigo-600 text-white shadow-lg shadow-indigo-100 flex items-center gap-2 premium-button"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
+						Text Copier
+					</button>
+					<button 
+						id="view-processor"
+						class="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-300 text-slate-500 hover:text-slate-900 hover:bg-white/50 flex items-center gap-2 premium-button"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+						Report Processor
+					</button>
 				</div>
 			</div>
 		</nav>
@@ -110,5 +107,39 @@ try {
 				<ReportProcessor client:load />
 			</div>
 		</main>
+
+		<!-- Floating Back to Top Button -->
+		<button 
+			id="back-to-top" 
+			class="fixed bottom-8 right-8 p-4 bg-indigo-600 text-white rounded-full shadow-2xl shadow-indigo-200 opacity-0 invisible translate-y-4 transition-all duration-500 z-[100] hover:bg-indigo-700 hover:-translate-y-1 active:scale-90 group"
+			aria-label="Back to Top"
+		>
+			<svg class="w-6 h-6 transition-transform group-hover:-translate-y-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/>
+			</svg>
+		</button>
+
+		<script>
+			const backToTopBtn = document.getElementById('back-to-top');
+
+			// Show/hide button on scroll
+			window.addEventListener('scroll', () => {
+				if (window.scrollY > 300) {
+					backToTopBtn?.classList.remove('opacity-0', 'invisible', 'translate-y-4');
+					backToTopBtn?.classList.add('opacity-100', 'visible', 'translate-y-0');
+				} else {
+					backToTopBtn?.classList.add('opacity-0', 'invisible', 'translate-y-4');
+					backToTopBtn?.classList.remove('opacity-100', 'visible', 'translate-y-0');
+				}
+			});
+
+			// Scroll to top on click
+			backToTopBtn?.addEventListener('click', () => {
+				window.scrollTo({
+					top: 0,
+					behavior: 'smooth'
+				});
+			});
+		</script>
 	</body>
 </html>

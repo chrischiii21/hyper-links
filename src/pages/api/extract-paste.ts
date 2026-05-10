@@ -367,6 +367,44 @@ export const POST: APIRoute = async ({ request }) => {
           bodyHtml = bodyHtml.replace(/%%COMPANY_OVERVIEW_PLACEHOLDER%%/g, 'Value Proposition');
         }
 
+        // SPECIAL CRITERIA: For Competitive Landscape (index 5), transform all H2 sub-headers into bullet points
+        if (index === 5) {
+          const $cl = cheerio.load(bodyHtml, null, false);
+          $cl('h2').each((_, h2El) => {
+            const $h2 = $cl(h2El);
+            const h2Text = $h2.text().trim().replace(/:$/, '');
+            
+            // Only transform if it is NOT a "Source" header
+            const isSourceHeader = h2Text.toLowerCase().includes('source');
+            if (isSourceHeader || !h2Text) return;
+
+            let combinedBody = '';
+            let $next = $h2.next();
+            while ($next.length > 0 && !['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes($next[0].tagName)) {
+              combinedBody += (combinedBody ? ' ' : '') + $next.text().trim();
+              const $toRemove = $next;
+              $next = $next.next();
+              $toRemove.remove();
+            }
+            
+            const listItemHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
+              <li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${h2Text}:</strong> ${combinedBody}</li>
+            </ul>`;
+            $h2.replaceWith(listItemHtml);
+          });
+
+          // Merge consecutive <ul> tags
+          $cl('ul + ul').each((_, ulEl) => {
+            const $ul = $cl(ulEl);
+            const $prev = $ul.prev('ul');
+            if ($prev.length > 0) {
+              $prev.append($ul.contents());
+              $ul.remove();
+            }
+          });
+          bodyHtml = $cl.html();
+        }
+
         const $final = cheerio.load(bodyHtml, null, false);
         $final('h1, h2, h3, h4, h5, h6').each((_, el) => {
           // Remove <strong> and <b> wrappers inside the header
