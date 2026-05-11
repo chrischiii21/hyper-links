@@ -498,6 +498,25 @@ export const POST: APIRoute = async ({ request }) => {
 
       // AGGRESSIVE UNBOLDING PASS: Catch native Word <h2> tags and strip inner strong/b tags
       const $body = cheerio.load(bodyHtml, null, false);
+
+      // BOLD WORDS BEFORE COLON IN BULLET POINTS
+      $body('li').each((_, liEl) => {
+        const $li = $body(liEl);
+        // Skip if it already contains strong at the beginning or is a source link
+        if ($li.find('strong, b').length > 0 || $li.find('a').length > 0) return;
+        
+        const html = $li.html() || '';
+        const colonIndex = html.indexOf(':');
+        
+        // Only bold if colon is within the first 60 characters to avoid bolding entire sentences 
+        // that happen to have a colon late in the text.
+        if (colonIndex > 0 && colonIndex < 60) {
+          const before = html.substring(0, colonIndex);
+          const after = html.substring(colonIndex);
+          $li.html(`<strong>${before}:</strong>${after.substring(1)}`);
+        }
+      });
+
       $body('h1, h2, h3, h4, h5, h6').each((_, el) => {
         // Remove <strong> and <b> wrappers inside the header
         $body(el).find('strong, b').each((_, boldEl) => {
