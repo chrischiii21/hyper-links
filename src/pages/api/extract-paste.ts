@@ -307,56 +307,76 @@ export const POST: APIRoute = async ({ request }) => {
           }
         });
 
-        // POST-PROCESS: Find "Sources" headers and beautify all consecutive content following them
+        // --- CONSOLIDATED SOURCE EXTRACTION ---
+        // Scan all elements for "Source:" markers, extract links, remove original elements,
+        // and append a consolidated list at the end of the section.
+        let sectionSources: LinkData[] = [];
+        
+        // 1. Identify and remove scattered sources
+        $('p, li, div').each((_, el) => {
+          const $el = $(el);
+          const text = $el.text().trim();
+          
+          // Check if it's a source citation (usually starts with (Source: or contains Source:)
+          // Also handle cases where it's just a raw link list
+          const hasSourceMarker = text.toLowerCase().includes('source:');
+          const links = extractLinks(text);
+          
+          if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
+            // It's likely a source citation
+            sectionSources.push(...links);
+            $el.remove();
+          }
+        });
+
+        // 2. Identify and remove existing "Sources" headers and their consecutive content
         $('h2[data-subheader="true"]').each((_, h2El) => {
           const $h2 = $(h2El);
           const title = $h2.text().trim().toLowerCase();
           if (title === 'sources' || title === 'source') {
             let $current = $h2.next();
-            let allLinks: LinkData[] = [];
-            let elementsToReplace: any[] = [];
-
-            // Collect all consecutive paragraphs that contain links
             while ($current.length > 0) {
               const tagName = $current[0].tagName;
               const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
               if (isHeader) break;
 
               const text = $current.text().trim();
-              
-              // SAFETY: Stop if this text matches any of the main section titles
-              const matchesMainTitle = TARGET_TITLES.some(title => 
-                text.toLowerCase().includes(title.toLowerCase()) && text.length < title.length + 10
-              );
-              if (matchesMainTitle) break;
-
               const links = extractLinks(text);
               if (links.length > 0) {
-                allLinks.push(...links);
-                elementsToReplace.push($current);
+                sectionSources.push(...links);
+                const $toRemove = $current;
                 $current = $current.next();
+                $toRemove.remove();
               } else {
                 break;
               }
             }
-
-            if (allLinks.length > 0) {
-              const label = allLinks.length === 1 ? 'Source' : 'Sources';
-              $h2.find('span').text(label);
-              
-              let consolidatedHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
-              allLinks.forEach(link => {
-                consolidatedHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
-              });
-              consolidatedHtml += '</ul>';
-
-              elementsToReplace[0].replaceWith(consolidatedHtml);
-              for (let i = 1; i < elementsToReplace.length; i++) {
-                elementsToReplace[i].remove();
-              }
-            }
+            $h2.remove();
           }
         });
+
+        // 3. Deduplicate sources by URL
+        const seenUrls = new Set();
+        sectionSources = sectionSources.filter(link => {
+          if (seenUrls.has(link.url)) return false;
+          seenUrls.add(link.url);
+          return true;
+        });
+
+        // 4. Append consolidated sources at the end
+        if (sectionSources.length > 0) {
+          const label = sectionSources.length === 1 ? 'Source' : 'Sources';
+          const sourcesH2 = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${label}</span></h2>`;
+          
+          let listHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+          sectionSources.forEach(link => {
+            listHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
+          });
+          listHtml += '</ul>';
+          
+          $.root().append(sourcesH2);
+          $.root().append(listHtml);
+        }
 
         // Link extraction utility moved to src/lib/linkUtils.ts
 

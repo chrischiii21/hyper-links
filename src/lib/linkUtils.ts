@@ -22,14 +22,15 @@ export function extractLinks(text: string): LinkData[] {
   cleanText = cleanText.replace(/<[^>]*>/g, ' ');
   
   // Find all URLs in the text
-  // Find all URLs in the text - supporting http(s)://, www., and common .com/.org etc. domains
-  // We exclude trailing punctuation to handle (Source: ... http://link.com) correctly
-  const urlRegex = /((?:https?:\/\/|www\.)[^\s\)\*>]+|(?:[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?))/gi;
+  // We prioritize http(s) and www to avoid matching naked domains that are actually part of the publisher name (e.g. Coinzilla.com)
+  const urlRegex = /((?:https?:\/\/|www\.)[^\s\)\*>]+|(?:(?:\s|^)[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?))/gi;
   let match;
   let lastIndex = 0;
   
   while ((match = urlRegex.exec(cleanText)) !== null) {
-    const url = match[1];
+    const url = match[1]?.trim();
+    if (!url) continue;
+
     const matchIndex = match.index;
     
     // Text between the last URL (or start) and this URL
@@ -37,11 +38,13 @@ export function extractLinks(text: string): LinkData[] {
     
     // Clean up the "publisher" text
     let publisher = beforeUrl
-      .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014]+/, '') // Leading junk (added : * em-dash en-dash)
-      .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014]+$/, '') // Trailing junk
+      .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014]+/, '') 
+      .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014]+$/, '') 
       .trim();
 
-    // Handle the case where there are parentheses before the URL
+    let year = '';
+
+    // Handle the case where there are parentheses before the URL (Source: Publisher, 2026, URL)
     const parenMatch = publisher.match(/(.*?)\s*\((.*?)$/);
     
     if (parenMatch) {
@@ -50,8 +53,14 @@ export function extractLinks(text: string): LinkData[] {
        
        if (inside) {
            inside = inside.replace(/Source:\s*/i, '').trim();
-           const firstInside = inside.split(',')[0].trim();
+           const parts = inside.split(',').map(p => p.trim());
+           const firstInside = parts[0];
            
+           // Identify year in parts
+           parts.forEach(part => {
+             if (/^\d{4}$/.test(part)) year = part;
+           });
+
            // Identification logic for dates/years
            const isMonthOnly = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov|Dec)(\s+\d{1,2})?$/i.test(firstInside);
            const isYearOrDate = /^\d{4}$/.test(firstInside) || 
@@ -69,20 +78,52 @@ export function extractLinks(text: string): LinkData[] {
            publisher = outside;
        }
     } else {
-       publisher = publisher.split(',')[0].replace(/Source:\s*/i, '').trim();
-    }
-    
-    if (!publisher || publisher.length < 2) {
-        publisher = 'Source';
+       // Fallback for non-parenthesized sources: Publisher, 2026, URL
+       const parts = publisher.split(',').map(p => p.trim());
+       if (parts.length > 1) {
+         publisher = parts[0].replace(/Source:\s*/i, '').trim();
+         parts.forEach(part => {
+           if (/^\d{4}$/.test(part)) year = part;
+         });
+       } else {
+         publisher = publisher.replace(/Source:\s*/i, '').trim();
+       }
     }
     
     // Ensure URL has a protocol
     let finalUrl = url;
-    if (!url.toLowerCase().startsWith('http')) {
+    if (!url.toLowerCase().startsWith('http') && !url.toLowerCase().startsWith('www.')) {
+        finalUrl = 'https://' + url;
+    } else if (url.toLowerCase().startsWith('www.')) {
         finalUrl = 'https://' + url;
     }
+
+    if (!publisher || publisher.length < 2 || publisher.toLowerCase() === 'source') {
+        try {
+          const urlObj = new URL(finalUrl);
+          publisher = urlObj.hostname.replace(/^www\./, '');
+          // Capitalize first letter
+          publisher = publisher.charAt(0).toUpperCase() + publisher.slice(1);
+        } catch (e) {
+          publisher = 'Source';
+        }
+    }
     
-    results.push({ publisher, url: finalUrl });
+    // SPECIAL CASE: If the "URL" we found is actually a naked domain that was immediately followed by a comma, 
+    // it was likely the publisher name. We skip it if there's a better URL coming up.
+    const remainingText = cleanText.substring(urlRegex.lastIndex);
+    const isNakedDomain = !url.toLowerCase().startsWith('http') && !url.toLowerCase().startsWith('www.');
+    if (isNakedDomain && remainingText.trim().startsWith(',')) {
+      // Look ahead for a real URL in the same citation block
+      const nextCitationEnd = remainingText.indexOf(')');
+      const nextFullUrl = remainingText.substring(0, nextCitationEnd > 0 ? nextCitationEnd : 50).match(/https?:\/\/[^\s\)]+/);
+      if (nextFullUrl) {
+        // Skip this naked domain match, it's just the publisher name
+        continue;
+      }
+    }
+
+    results.push({ publisher, url: finalUrl, year });
     lastIndex = urlRegex.lastIndex;
   }
   

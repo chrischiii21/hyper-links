@@ -24,7 +24,7 @@ function cn(...inputs: ClassValue[]) {
 
 interface LinkData {
   publisher: string;
-  year: string;
+  year?: string;
   url: string;
   suffix?: string;
   title?: string;

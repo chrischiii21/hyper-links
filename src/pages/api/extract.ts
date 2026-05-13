@@ -238,59 +238,10 @@ export const POST: APIRoute = async ({ request }) => {
       }
     });
 
-    // POST-PROCESS: Find "Sources" headers and beautify all consecutive content following them
-    $('h2[data-subheader="true"]').each((_, h2El) => {
-      const $h2 = $(h2El);
-      const title = $h2.text().trim().toLowerCase();
-      if (title === 'sources' || title === 'source') {
-        let $current = $h2.next();
-        let allLinks: LinkData[] = [];
-        let elementsToReplace: any[] = [];
-
-        // Collect all consecutive paragraphs that contain links
-        while ($current.length > 0) {
-          const tagName = $current[0].tagName;
-          const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
-          if (isHeader) break;
-
-          const text = $current.text().trim();
-          
-          // SAFETY: Stop if this text matches any of the main section titles
-          const matchesMainTitle = TARGET_TITLES.some(title => 
-            text.toLowerCase().includes(title.toLowerCase()) && text.length < title.length + 10
-          );
-          if (matchesMainTitle) break;
-
-          const links = extractLinks(text);
-          if (links.length > 0) {
-            allLinks.push(...links);
-            elementsToReplace.push($current);
-            $current = $current.next();
-          } else {
-            break;
-          }
-        }
-
-        if (allLinks.length > 0) {
-          // Pluralize the header based on total count
-          const label = allLinks.length === 1 ? 'Source' : 'Sources';
-          $h2.find('span').text(label);
-          
-          // Generate a single consolidated list
-          let consolidatedHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
-          allLinks.forEach(link => {
-            consolidatedHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
-          });
-          consolidatedHtml += '</ul>';
-
-          // Replace the first element with the list and remove the others
-          elementsToReplace[0].replaceWith(consolidatedHtml);
-          for (let i = 1; i < elementsToReplace.length; i++) {
-            elementsToReplace[i].remove();
-          }
-        }
-      }
-    });
+    // --- CONSOLIDATED SOURCE EXTRACTION ---
+    // Scan all elements for "Source:" markers, extract links, remove original elements,
+    // and append a consolidated list at the end of each section later in the loop.
+    // NOTE: This logic is moved inside the sections loop for better section-specific consolidation.
 
     // Link extraction utility has been moved to src/lib/linkUtils.ts
 
@@ -496,8 +447,68 @@ export const POST: APIRoute = async ({ request }) => {
         bodyHtml = $cl.html();
       }
 
-      // AGGRESSIVE UNBOLDING PASS: Catch native Word <h2> tags and strip inner strong/b tags
+      // POST-PROCESS: Group Competition entries into a single bulleted list (Same logic as paste)
+      // Already handled by the initial cheerio load and transformations above if applicable,
+      // but let's ensure sources are consolidated per section.
+
       const $body = cheerio.load(bodyHtml, null, false);
+
+      // --- CONSOLIDATED SOURCE EXTRACTION (Section Specific) ---
+      let sectionSources: LinkData[] = [];
+      $body('p, li, div').each((_, el) => {
+        const $el = $body(el);
+        const text = $el.text().trim();
+        const hasSourceMarker = text.toLowerCase().includes('source:');
+        const links = extractLinks(text);
+        
+        if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
+          sectionSources.push(...links);
+          $el.remove();
+        }
+      });
+
+      $body('h2[data-subheader="true"]').each((_, h2El) => {
+        const $h2 = $body(h2El);
+        const title = $h2.text().trim().toLowerCase();
+        if (title === 'sources' || title === 'source') {
+          let $current = $h2.next();
+          while ($current.length > 0) {
+            const tagName = $current[0].tagName;
+            const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
+            if (isHeader) break;
+            const text = $current.text().trim();
+            const links = extractLinks(text);
+            if (links.length > 0) {
+              sectionSources.push(...links);
+              const $toRemove = $current;
+              $current = $current.next();
+              $toRemove.remove();
+            } else {
+              break;
+            }
+          }
+          $h2.remove();
+        }
+      });
+
+      const seenUrls = new Set();
+      sectionSources = sectionSources.filter(link => {
+        if (seenUrls.has(link.url)) return false;
+        seenUrls.add(link.url);
+        return true;
+      });
+
+      if (sectionSources.length > 0) {
+        const label = sectionSources.length === 1 ? 'Source' : 'Sources';
+        const sourcesH2 = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${label}</span></h2>`;
+        let listHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+        sectionSources.forEach(link => {
+          listHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
+        });
+        listHtml += '</ul>';
+        $body.root().append(sourcesH2);
+        $body.root().append(listHtml);
+      }
 
       // BOLD WORDS BEFORE COLON IN BULLET POINTS
       $body('li').each((_, liEl) => {
