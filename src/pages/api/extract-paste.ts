@@ -33,6 +33,8 @@ const SUB_HEADERS = [
   "Company Overview",
   "Product Overview",
   "Product Offering",
+  "Use Cases",
+  "Use Case",
   "Business Model",
   "Pricing Structure",
   "Prices",
@@ -74,6 +76,9 @@ const SUB_HEADERS = [
   "Market Definition",
   "Market Characteristics",
   "Market Trends",
+  "Platform Competition",
+  "Adjacent Competition",
+  "Point Solution Competition",
   "Competitive Landscape",
   "Sources"
 ];
@@ -166,7 +171,7 @@ export const POST: APIRoute = async ({ request }) => {
             rawItems = [text];
           }
 
-          let listHtml = '<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0;">';
+          let listHtml = '<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0;">';
           let validItems = 0;
           rawItems.forEach((item: string) => {
             let cleanItem = item.replace(/^[•\-\u2022\u2013\u2014\s\t*]+/, '').trim();
@@ -222,6 +227,25 @@ export const POST: APIRoute = async ({ request }) => {
             let innerText = match[1];
             const remainingText = match[2];
             
+            // Map matched subheader text to its exact canonical Title Case equivalent from SUB_HEADERS
+            const normalizeForComparison = (str: string) => {
+              return str
+                .toLowerCase()
+                .replace(/\b(and|&)\b/g, 'and')
+                .replace(/[^a-z0-9]/g, '')
+                .trim();
+            };
+
+            const normalizedInner = normalizeForComparison(innerText);
+            const canonicalHeader = SUB_HEADERS.find(h => normalizeForComparison(h) === normalizedInner);
+            if (canonicalHeader) {
+              innerText = canonicalHeader;
+            }
+
+            if (innerText.toLowerCase() === 'additional note' || innerText.toLowerCase() === 'additional notes') {
+              innerText = 'Additional Important Note';
+            }
+            
             // SPECIAL CASE: Ensure we don't convert a main section title into a sub-header
             const matchesMainTitle = MATCH_PATTERNS.some(pattern => 
               new RegExp(`^${prefixPattern}${pattern}\\s*$`, 'i').test(cleanCompareText)
@@ -252,15 +276,22 @@ export const POST: APIRoute = async ({ request }) => {
                   finalHtml = rawHtml.substring(htmlMatch[0].length).trim();
                 }
                 
-                // For sections other than Executive Summary, separate inline headers to new line
-                const newTag = 'p';
-                $(el).replaceWith(`${h2Html}\n<${newTag}>${finalHtml}</${newTag}>`);
-              } else {
-                $(el).replaceWith(h2Html);
-              }
+                // Clean up leading punctuation and spaces (e.g. leading periods, colons, dashes, bullets)
+                finalHtml = finalHtml.replace(/^[.\s,;:\-\u2013\u2014\u2022]+/, '').trim();
+                
+                if (finalHtml.length > 0) {
+                  // For sections other than Executive Summary, separate inline headers to new line
+                  const newTag = 'p';
+                  $(el).replaceWith(`${h2Html}\n<${newTag}>${finalHtml}</${newTag}>`);
+                } else {
+                  $(el).replaceWith(h2Html);
+                }
+            } else {
+              $(el).replaceWith(h2Html);
             }
           }
-        });
+        }
+      });
 
         // POST-PROCESS: Group Competition entries into a single bulleted list
         $('h2[data-subheader="true"]').each((_, h2El) => {
@@ -300,7 +331,7 @@ export const POST: APIRoute = async ({ request }) => {
             }
 
             if (compEntries.length > 0) {
-              let listHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+              let listHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
               compEntries.forEach(entry => {
                 listHtml += `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${entry.title}:</strong> ${entry.body}</li>`;
               });
@@ -324,10 +355,58 @@ export const POST: APIRoute = async ({ request }) => {
           const links: LinkData[] = [];
           $el.find('a').each((_, aEl: any) => {
             const href = $(aEl).attr('href');
-            const linkText = $(aEl).text().trim();
+            let linkText = $(aEl).text().trim();
             if (href) {
+              // Check if the link text is just a naked URL
+              const isNakedUrl = /^(?:https?:\/\/|www\.)[^\s]+$/i.test(linkText) || 
+                                 /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?$/i.test(linkText);
+              
+              const parentText = $el.text();
+              const anchorIndex = parentText.indexOf(linkText);
+              
+              if (anchorIndex > 0) {
+                let precedingText = parentText.substring(0, anchorIndex).trim();
+                if (precedingText.includes('\n')) {
+                  const lines = precedingText.split('\n');
+                  precedingText = lines[lines.length - 1].trim();
+                }
+                
+                const hasStructuredMarker = /[:\u2014\u2013]|(?:\s-\s)/.test(precedingText);
+                
+                if (hasStructuredMarker || isNakedUrl) {
+                  const cleanPublisher = precedingText
+                    .replace(/^(?:#+\s*)?(?:Sources?|Use\s+Cases?|References?)[:\s\n]*/i, '') // strip headers
+                    .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+                    .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+                    .trim();
+                    
+                  if (cleanPublisher && cleanPublisher.length > 2 && cleanPublisher.toLowerCase() !== 'source') {
+                    linkText = cleanPublisher;
+                  }
+                }
+              }
+              
+              // Clean up the linkText (strip leading/trailing bullets, etc.)
+              let cleanPublisher = linkText
+                .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+                .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+                .trim();
+              
+              // Fallback to hostname if it's still a naked URL
+              const isStillNaked = /^(?:https?:\/\/|www\.)[^\s]+$/i.test(cleanPublisher) || 
+                                   /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?$/i.test(cleanPublisher);
+              if (isStillNaked || !cleanPublisher) {
+                try {
+                  const urlObj = new URL(href.startsWith('http') ? href : 'https://' + href);
+                  cleanPublisher = urlObj.hostname.replace(/^www\./, '');
+                  cleanPublisher = cleanPublisher.charAt(0).toUpperCase() + cleanPublisher.slice(1);
+                } catch (e) {
+                  cleanPublisher = 'Source';
+                }
+              }
+
               links.push({
-                publisher: linkText || 'Source',
+                publisher: cleanPublisher,
                 url: href
               });
             }
@@ -354,24 +433,26 @@ export const POST: APIRoute = async ({ request }) => {
         });
 
         // 2. Identify and remove existing "Sources" headers and their consecutive content
-        $('h2[data-subheader="true"]').each((_, h2El) => {
+        $('h1, h2, h3, h4, h5, h6, p, li, strong, em, b').each((_, h2El) => {
           const $h2 = $(h2El);
           const title = $h2.text().trim().toLowerCase();
-          if (title === 'sources' || title === 'source') {
-            let $current = $h2.next();
-            while ($current.length > 0) {
-              const tagName = $current[0].tagName;
-              const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
-              if (isHeader) break;
+          if (title === 'sources' || title === 'source' || title === 'sources:' || title === 'source:') {
+            if ($h2.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(h2El.tagName)) {
+              let $current = $h2.next();
+              while ($current.length > 0) {
+                const tagName = $current[0].tagName;
+                const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
+                if (isHeader) break;
 
-              const links = getLinksFromElement($current);
-              if (links.length > 0) {
-                sectionSources.push(...links);
-                const $toRemove = $current;
-                $current = $current.next();
-                $toRemove.remove();
-              } else {
-                break;
+                const links = getLinksFromElement($current);
+                if (links.length > 0) {
+                  sectionSources.push(...links);
+                  const $toRemove = $current;
+                  $current = $current.next();
+                  $toRemove.remove();
+                } else {
+                  break;
+                }
               }
             }
             $h2.remove();
@@ -391,7 +472,7 @@ export const POST: APIRoute = async ({ request }) => {
           const label = sectionSources.length === 1 ? 'Source' : 'Sources';
           const sourcesH2 = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${label}</span></h2>`;
           
-          let listHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+          let listHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
           sectionSources.forEach(link => {
             listHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
           });
@@ -433,7 +514,7 @@ export const POST: APIRoute = async ({ request }) => {
               $toRemove.remove();
             }
             
-            const listItemHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
+            const listItemHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
               <li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${h2Text}:</strong> ${combinedBody}</li>
             </ul>`;
             $h2.replaceWith(listItemHtml);
@@ -471,7 +552,7 @@ export const POST: APIRoute = async ({ request }) => {
               $toRemove.remove();
             }
             
-            const listItemHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
+            const listItemHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
               <li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${h2Text}:</strong> ${combinedBody}</li>
             </ul>`;
             $h2.replaceWith(listItemHtml);

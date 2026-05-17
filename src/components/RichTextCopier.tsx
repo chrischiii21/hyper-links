@@ -336,6 +336,17 @@ export default function RichTextCopier() {
             </button>
           </div>
           
+          <div className="flex flex-wrap items-center gap-2.5 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/80">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Preset Use Cases:</span>
+            <button
+              onClick={() => setInputText(`Use Cases\n• Frotcom — Company website: https://www.frotcom.com/frotcom-international\n• Frotcom — About us: https://www.frotcom.com/about-us\n• Frotcom — Features: https://www.frotcom.com/features\n• Frotcom — Plug & Play vehicle tracking: https://www.frotcom.com/features/plug-play-vehicle-tracking-and-maintenance\n• Microsoft Azure Marketplace — Frotcom listing: https://marketplace.microsoft.com/en-us/product/web-apps/frotcominternationallda.frotcom\n• Capterra — Frotcom product page: https://www.capterra.com/p/149357/Frotcom/`)}
+              className="px-4 py-2 bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 rounded-xl text-xs font-bold transition-all active:scale-95 border border-slate-200 hover:border-indigo-200 shadow-sm flex items-center gap-1.5 cursor-pointer"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-indigo-500" />
+              Frotcom Fleet Tracking
+            </button>
+          </div>
+          
           <div className="relative group">
             <div className="absolute -inset-0.5 bg-gradient-to-r from-indigo-500 to-blue-500 rounded-3xl blur opacity-0 group-focus-within:opacity-10 transition duration-500"></div>
             <textarea

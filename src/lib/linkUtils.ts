@@ -15,8 +15,8 @@ export interface LinkData {
 export function extractLinks(text: string): LinkData[] {
   const results: LinkData[] = [];
   
-  // Clean up "Sources" header at the very beginning
-  let cleanText = text.replace(/^Sources?[:\s\n]*/i, '').trim();
+  // Clean up standard headers (e.g. Sources, Use Cases, References) at the very beginning, including markdown markers
+  let cleanText = text.replace(/^(?:#+\s*)?(?:Sources?|Use\s+Cases?|References?)[:\s\n]*/i, '').trim();
   
   // Strip HTML tags to avoid matching URLs with trailing </strong> etc.
   cleanText = cleanText.replace(/<[^>]*>/g, ' ');
@@ -35,11 +35,15 @@ export function extractLinks(text: string): LinkData[] {
     
     // Text between the last URL (or start) and this URL
     let beforeUrl = cleanText.substring(lastIndex, matchIndex).trim();
+    if (beforeUrl.includes('\n')) {
+      const lines = beforeUrl.split('\n');
+      beforeUrl = lines[lines.length - 1].trim();
+    }
     
-    // Clean up the "publisher" text
+    // Clean up the "publisher" text, including bullets (\u2022 and other unicode variations)
     let publisher = beforeUrl
-      .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014]+/, '') 
-      .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014]+$/, '') 
+      .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+      .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
       .trim();
 
     let year = '';
@@ -137,7 +141,7 @@ export function generateSourceListHtml(text: string): string {
   const links = extractLinks(text);
   if (links.length === 0) return text;
 
-  let html = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
+  let html = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
   links.forEach(link => {
     html += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
   });
