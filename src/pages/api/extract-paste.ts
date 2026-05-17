@@ -16,23 +16,43 @@ const TARGET_TITLES = [
   "Market"
 ];
 
+const MATCH_PATTERNS = [
+  "Executive Summary(?:\\s*\\&\\s*Dedale\\s*Take)?",
+  "Value Proposition(?:[,\\s]+Product Offering\\s*\\&\\s*Business Model)?",
+  "(?:Company\\s+)?(?:Foundation|Ownership)(?:[,\\s]+Ownership\\s*\\&\\s*Key Milestones|\\s*\\&\\s*Key Milestones)?",
+  "Customer Profile(?:s)?",
+  "Customer Feedback(?:\\s*\\&\\s*Testimonials)?",
+  "Competitive Landscape",
+  "Leadership",
+  "Sales(?:\\s*\\&\\s*Go[- ]to[- ]Market)?",
+  "(?:Research\\s*\\&\\s*Development|R\\&D)(?:\\s*\\&\\s*Tech)?",
+  "Market(?:\\s*Context)?"
+];
+
 const SUB_HEADERS = [
   "Company Overview",
   "Product Overview",
+  "Product Offering",
   "Business Model",
   "Pricing Structure",
   "Prices",
   "Contract Length",
   "Additional Important Note",
+  "Additional Note",
+  "Company Foundation",
   "Founding Details & Initial Focus",
   "Company Evolution",
   "Strategic Milestones",
   "Customer Geography",
   "Customer Size",
   "Customer Industry",
+  "Customer Overview",
   "Buying Personas",
   "Adoption Trigger & Pain Points",
   "Key Purchasing Criteria",
+  "Key Purchasing Criterion",
+  "Customer Feedback",
+  "Customer Feedback & Testimonials",
   "Customer Level of Satisfaction",
   "Customer ROI",
   "Offering Strengths",
@@ -45,13 +65,16 @@ const SUB_HEADERS = [
   "Sales Channels & Partner Strategy",
   "Sales Organization",
   "Go-To-Market Strategy",
+  "Sales & Go-To-Market",
   "Product Capability",
   "R&D Capability",
   "R&D Team",
+  "Research & Development",
   "AI Development",
   "Market Definition",
   "Market Characteristics",
   "Market Trends",
+  "Competitive Landscape",
   "Sources"
 ];
 
@@ -192,6 +215,7 @@ export const POST: APIRoute = async ({ request }) => {
 
         $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b, em, i').each((_, el) => {
           const text = $(el).text().trim();
+          const cleanCompareText = text.replace(/[:\-\u2013\u2014]$/, '').trim();
           const match = subHeaderRegex.exec(text);
           
           if (match) {
@@ -199,8 +223,8 @@ export const POST: APIRoute = async ({ request }) => {
             const remainingText = match[2];
             
             // SPECIAL CASE: Ensure we don't convert a main section title into a sub-header
-            const matchesMainTitle = TARGET_TITLES.some(title => 
-              text.toLowerCase().includes(title.toLowerCase()) && text.length < title.length + 5
+            const matchesMainTitle = MATCH_PATTERNS.some(pattern => 
+              new RegExp(`^${prefixPattern}${pattern}\\s*$`, 'i').test(cleanCompareText)
             );
             if (matchesMainTitle) return;
 
@@ -220,22 +244,6 @@ export const POST: APIRoute = async ({ request }) => {
                   }
                 }
 
-                // For Executive Summary (index 0), we keep li inline as per user request
-                if (el.tagName === 'li' && index === 0) {
-                  // Even if inline, ensure it's not bold
-                  $(el).find('strong, b').each((_, boldEl) => {
-                    const boldText = $(boldEl).text().trim();
-                    if (SUB_HEADERS.some(sh => boldText.toLowerCase().includes(sh.toLowerCase()))) {
-                      $(boldEl).replaceWith($(boldEl).html() || '');
-                    }
-                  });
-
-                  if (match[1].toLowerCase() === 'company overview') {
-                    const rawHtml = $(el).html() || '';
-                    $(el).html(rawHtml.replace(/company overview/i, '%%COMPANY_OVERVIEW_PLACEHOLDER%%'));
-                  }
-                  return;
-                }
 
                 let finalHtml = remainingText.trim();
                 const rawHtml = $(el).html() || '';
@@ -311,6 +319,22 @@ export const POST: APIRoute = async ({ request }) => {
         // Scan all elements for "Source:" markers, extract links, remove original elements,
         // and append a consolidated list at the end of the section.
         let sectionSources: LinkData[] = [];
+
+        const getLinksFromElement = ($el: any): LinkData[] => {
+          const links: LinkData[] = [];
+          $el.find('a').each((_, aEl: any) => {
+            const href = $(aEl).attr('href');
+            const linkText = $(aEl).text().trim();
+            if (href) {
+              links.push({
+                publisher: linkText || 'Source',
+                url: href
+              });
+            }
+          });
+          if (links.length > 0) return links;
+          return extractLinks($el.text());
+        };
         
         // 1. Identify and remove scattered sources
         $('p, li, div').each((_, el) => {
@@ -320,7 +344,7 @@ export const POST: APIRoute = async ({ request }) => {
           // Check if it's a source citation (usually starts with (Source: or contains Source:)
           // Also handle cases where it's just a raw link list
           const hasSourceMarker = text.toLowerCase().includes('source:');
-          const links = extractLinks(text);
+          const links = getLinksFromElement($el);
           
           if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
             // It's likely a source citation
@@ -340,8 +364,7 @@ export const POST: APIRoute = async ({ request }) => {
               const isHeader = $current.attr('data-subheader') === 'true' || ['h1', 'h2', 'h3'].includes(tagName);
               if (isHeader) break;
 
-              const text = $current.text().trim();
-              const links = extractLinks(text);
+              const links = getLinksFromElement($current);
               if (links.length > 0) {
                 sectionSources.push(...links);
                 const $toRemove = $current;
@@ -385,6 +408,47 @@ export const POST: APIRoute = async ({ request }) => {
           bodyHtml = bodyHtml.replace(/%%COMPANY_OVERVIEW_PLACEHOLDER%%/g, 'Company Overview');
         } else {
           bodyHtml = bodyHtml.replace(/%%COMPANY_OVERVIEW_PLACEHOLDER%%/g, 'Value Proposition');
+        }
+
+        // SPECIAL CRITERIA: For Executive Summary (index 0), transform all H2 sub-headers into bullet points
+        if (index === 0) {
+          const $es = cheerio.load(bodyHtml, null, false);
+          $es('h2').each((_, h2El) => {
+            const $h2 = $es(h2El);
+            const h2Text = $h2.text().trim().replace(/:$/, '');
+            
+            // Only transform if it is NOT a "Source" header
+            const isSourceHeader = h2Text.toLowerCase().includes('source');
+            if (isSourceHeader || !h2Text) return;
+
+            let combinedBody = '';
+            let $next = $h2.next();
+            while ($next.length > 0 && !['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes($next[0].tagName)) {
+              const textBlock = $next.text().trim().replace(/^[•\-\u2022\u2013\u2014\s\t*]+/, '');
+              if (textBlock) {
+                combinedBody += (combinedBody ? ' ' : '') + textBlock;
+              }
+              const $toRemove = $next;
+              $next = $next.next();
+              $toRemove.remove();
+            }
+            
+            const listItemHtml = `<ul style="list-style-type: disc; padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
+              <li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${h2Text}:</strong> ${combinedBody}</li>
+            </ul>`;
+            $h2.replaceWith(listItemHtml);
+          });
+
+          // Merge consecutive <ul> tags for a cleaner look
+          $es('ul + ul').each((_, ulEl) => {
+            const $ul = $es(ulEl);
+            const $prev = $ul.prev('ul');
+            if ($prev.length > 0) {
+              $prev.append($ul.contents());
+              $ul.remove();
+            }
+          });
+          bodyHtml = $es.html();
         }
 
         // SPECIAL CRITERIA: For Competitive Landscape (index 5), transform all H2 sub-headers into bullet points
@@ -452,7 +516,7 @@ export const POST: APIRoute = async ({ request }) => {
           });
 
           // Apply strict inline unbolding and un-italicizing styles
-          const isMainTitle = !$(el).attr('data-subheader');
+          const isMainTitle = !$final(el).attr('data-subheader');
           const fontSize = isMainTitle ? '1.5em' : '1.25em';
           const marginTop = isMainTitle ? '2em' : '1.5em';
           
