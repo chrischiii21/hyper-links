@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import * as cheerio from 'cheerio';
-import { generateSourceListHtml, extractLinks } from '../../lib/linkUtils';
+import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
   "Executive Summary",
@@ -634,12 +634,7 @@ export const POST: APIRoute = async ({ request }) => {
         }
       });
 
-      const seenUrls = new Set();
-      sectionSources = sectionSources.filter(link => {
-        if (seenUrls.has(link.url)) return false;
-        seenUrls.add(link.url);
-        return true;
-      });
+      sectionSources = deduplicateAndEnhancePublishers(sectionSources);
 
       if (sectionSources.length > 0) {
         const label = sectionSources.length === 1 ? 'Source' : 'Sources';

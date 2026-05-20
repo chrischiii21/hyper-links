@@ -9,6 +9,122 @@ export interface LinkData {
   year?: string;
 }
 
+export function appendUrlTitleToPublisher(publisher: string, urlStr: string): string {
+  if (!urlStr) return publisher;
+  try {
+    const url = new URL(urlStr.startsWith('http') ? urlStr : 'https://' + urlStr);
+    let pathname = url.pathname;
+    
+    // Remove trailing slash and common file extensions
+    pathname = pathname.replace(/\/$/, '').replace(/\.[a-zA-Z0-9]+$/, '');
+    
+    if (!pathname || pathname === '/') return publisher;
+    
+    // Get segments
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments.length === 0) return publisher;
+    
+    // Get the last segment
+    let lastSegment = segments[segments.length - 1];
+    
+    // If last segment is empty or just numbers/IDs, try the second to last if available
+    if (/^\d+$/.test(lastSegment) && segments.length > 1) {
+      lastSegment = segments[segments.length - 2];
+    }
+    
+    // Replace hyphens, underscores, %20 etc with spaces
+    let decoded = lastSegment;
+    try {
+      decoded = decodeURIComponent(lastSegment);
+    } catch (e) {}
+    
+    let wordsStr = decoded.replace(/[-_]+/g, ' ').trim();
+    if (!wordsStr) return publisher;
+    
+    // Capitalize words
+    const words = wordsStr.split(' ');
+    const capitalized = words.map((word, idx) => {
+      if (!word) return '';
+      const lower = word.toLowerCase();
+      
+      // Minor words that shouldn't be capitalized in titles unless it's the first word
+      const shortWords = ['to', 'on', 'in', 'of', 'and', 'the', 'a', 'an', 'for', 'with', 'at', 'by', 'from', 'as'];
+      if (shortWords.includes(lower) && idx > 0) {
+        return lower;
+      }
+      
+      // Specific capitalization for common abbreviations
+      if (lower === 'ai') return 'AI';
+      if (lower === 'us') return 'Us';
+      if (/^q[1-4]$/i.test(lower)) return lower.toUpperCase();
+      
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    });
+    
+    // Always capitalize the first word
+    if (capitalized.length > 0 && capitalized[0]) {
+      capitalized[0] = capitalized[0].charAt(0).toUpperCase() + capitalized[0].slice(1);
+    }
+    
+    const urlTitle = capitalized.join(' ');
+    
+    // Ensure we don't duplicate the publisher name if urlTitle already starts with it
+    const escapedPub = publisher.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pubRegex = new RegExp(`^${escapedPub}\\b\\s*[-–—:]*\\s*`, 'i');
+    
+    if (pubRegex.test(urlTitle)) {
+      const strippedTitle = urlTitle.replace(pubRegex, '').trim();
+      if (strippedTitle) {
+        return `${publisher} - ${strippedTitle}`;
+      }
+      return publisher;
+    }
+    
+    // Check if the publisher starts with the urlTitle (e.g. publisher is "Blend360" and urlTitle is "Blend")
+    const pubPrefixRegex = new RegExp(`^${urlTitle}\\b`, 'i');
+    if (pubPrefixRegex.test(publisher)) {
+      return publisher;
+    }
+    
+    return `${publisher} - ${urlTitle}`;
+  } catch (e) {
+    return publisher;
+  }
+}
+
+export function deduplicateAndEnhancePublishers(links: LinkData[]): LinkData[] {
+  // Deduplicate by URL first
+  const seenUrls = new Set<string>();
+  const uniqueLinks = links.filter(link => {
+    if (seenUrls.has(link.url)) return false;
+    seenUrls.add(link.url);
+    return true;
+  });
+
+  // Count occurrences of each publisher (case-insensitive)
+  const publisherCounts = new Map<string, number>();
+  uniqueLinks.forEach(link => {
+    const pubLower = link.publisher.toLowerCase();
+    publisherCounts.set(pubLower, (publisherCounts.get(pubLower) || 0) + 1);
+  });
+
+  // Enhance publisher names if they are duplicated
+  return uniqueLinks.map(link => {
+    const pubLower = link.publisher.toLowerCase();
+    const count = publisherCounts.get(pubLower) || 0;
+    
+    if (count > 1) {
+      const enhancedPublisher = appendUrlTitleToPublisher(link.publisher, link.url);
+      return {
+        ...link,
+        publisher: enhancedPublisher
+      };
+    }
+    
+    return link;
+  });
+}
+
 /**
  * Extracts links from text and identifies publishers
  */
@@ -131,7 +247,7 @@ export function extractLinks(text: string): LinkData[] {
     lastIndex = urlRegex.lastIndex;
   }
   
-  return results;
+  return deduplicateAndEnhancePublishers(results);
 }
 
 /**

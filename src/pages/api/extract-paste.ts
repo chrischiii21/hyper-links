@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { marked } from 'marked';
 import * as cheerio from 'cheerio';
-import { generateSourceListHtml, extractLinks } from '../../lib/linkUtils';
+import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
   "Executive Summary",
@@ -459,13 +459,8 @@ export const POST: APIRoute = async ({ request }) => {
           }
         });
 
-        // 3. Deduplicate sources by URL
-        const seenUrls = new Set();
-        sectionSources = sectionSources.filter(link => {
-          if (seenUrls.has(link.url)) return false;
-          seenUrls.add(link.url);
-          return true;
-        });
+        // 3. Deduplicate sources and enhance duplicate publishers
+        sectionSources = deduplicateAndEnhancePublishers(sectionSources);
 
         // 4. Append consolidated sources at the end
         if (sectionSources.length > 0) {
