@@ -139,7 +139,8 @@ export function extractLinks(text: string): LinkData[] {
   
   // Find all URLs in the text
   // We prioritize http(s) and www to avoid matching naked domains that are actually part of the publisher name (e.g. Coinzilla.com)
-  const urlRegex = /((?:https?:\/\/|www\.)[^\s\)\*>]+|(?:(?:\s|^)[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?))/gi;
+  // We allow non-alphanumeric characters (like parenthesises) to precede naked domains.
+  const urlRegex = /(?:^|[^a-zA-Z0-9])((?:https?:\/\/|www\.)[^\s\)\*>]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?)/gi;
   let match;
   let lastIndex = 0;
   
@@ -147,7 +148,8 @@ export function extractLinks(text: string): LinkData[] {
     const url = match[1]?.trim();
     if (!url) continue;
 
-    const matchIndex = match.index;
+    // Calculate exact start index of the URL (ignoring the prefix character)
+    const matchIndex = match.index + match[0].indexOf(match[1]);
     
     // Text between the last URL (or start) and this URL
     let beforeUrl = cleanText.substring(lastIndex, matchIndex).trim();
@@ -218,14 +220,119 @@ export function extractLinks(text: string): LinkData[] {
         finalUrl = 'https://' + url;
     }
 
-    if (!publisher || publisher.length < 2 || publisher.toLowerCase() === 'source') {
+    // Custom brand/description extraction from the parsed "publisher" text
+    let finalPublisher = publisher;
+    
+    // 1. Extract brand name from URL
+    let brand = '';
+    try {
+      const urlObj = new URL(finalUrl);
+      const hostname = urlObj.hostname.replace(/^www\./i, '');
+      const domainParts = hostname.split('.');
+      if (domainParts.length >= 2) {
+        const secondToLast = domainParts[domainParts.length - 2].toLowerCase();
+        const isCommonTld = ['co', 'com', 'org', 'net', 'gov', 'edu', 'ltd'].includes(secondToLast);
+        if (isCommonTld && domainParts.length >= 3) {
+          brand = domainParts[domainParts.length - 3];
+        } else {
+          brand = domainParts[domainParts.length - 2];
+        }
+      } else {
+        brand = domainParts[0] || '';
+      }
+    } catch (e) {}
+
+    // Capitalize brand name properly
+    let capitalizedBrand = '';
+    if (brand) {
+      if (brand.toLowerCase() === 'blend360') {
+        capitalizedBrand = 'Blend360';
+      } else if (brand.toLowerCase() === 'jalios') {
+        capitalizedBrand = 'Jalios';
+      } else {
+        capitalizedBrand = brand.charAt(0).toUpperCase() + brand.slice(1);
+      }
+    }
+
+    // 2. See if the publisher text contains the brand, or is a description
+    if (capitalizedBrand && publisher && publisher.toLowerCase() !== 'source') {
+      const pubLower = publisher.toLowerCase();
+      const brandLower = capitalizedBrand.toLowerCase();
+      
+      let description = '';
+      if (pubLower.startsWith(brandLower)) {
+        // e.g. "Jalios clients page" -> "clients page"
+        description = publisher.substring(capitalizedBrand.length).trim();
+      } else if (pubLower.endsWith(brandLower)) {
+        // e.g. "clients page Jalios" -> "clients page"
+        description = publisher.substring(0, publisher.length - capitalizedBrand.length).trim();
+      } else {
+        // E.g. "clients page" -> description is "clients page", brand is "Jalios"
+        const isGenericDesc = /^(clients|homepage|sectors|solutions|website|about|features|pricing|blog|news|documentation|docs)/i.test(pubLower);
+        if (isGenericDesc) {
+          description = publisher;
+        }
+      }
+
+      // Clean up description prefix/suffix punctuation
+      description = description
+        .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+        .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+        .trim();
+
+      if (description) {
+        // Standardize common descriptions
+        let cleanDesc = description;
+        if (/^homepage$/i.test(cleanDesc)) {
+          cleanDesc = 'Homepage';
+        } else if (/^clients\s*page$/i.test(cleanDesc) || /^clients$/i.test(cleanDesc)) {
+          cleanDesc = 'Clients';
+        } else if (/^sectors\s*pages?$/i.test(cleanDesc) || /^sectors$/i.test(cleanDesc) || /^solutions\/secteurs$/i.test(cleanDesc) || /^secteurs$/i.test(cleanDesc)) {
+          cleanDesc = 'Sectors';
+        } else {
+          // Capitalize description words
+          cleanDesc = cleanDesc.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        }
+        finalPublisher = `${capitalizedBrand} - ${cleanDesc}`;
+      } else {
+        finalPublisher = capitalizedBrand;
+      }
+    } else if (capitalizedBrand) {
+      finalPublisher = capitalizedBrand;
+    }
+
+    // 3. Fallback/Specific Mappings: If the publisher ended up being just the brand name (or fallback), 
+    // try to get a more specific page title from the URL path.
+    if (finalPublisher === capitalizedBrand && capitalizedBrand) {
+      try {
+        const urlObj = new URL(finalUrl);
+        const pathname = urlObj.pathname.replace(/\/$/, '').toLowerCase();
+        
+        if (urlObj.hostname.replace(/^www\./i, '') === 'jalios.com') {
+          if (pathname === '/fr' || pathname === '/fr/' || pathname === '') {
+            finalPublisher = 'Jalios - Homepage';
+          } else if (pathname === '/fr/clients') {
+            finalPublisher = 'Jalios - Clients';
+          } else if (pathname === '/fr/solutions/secteurs') {
+            finalPublisher = 'Jalios - Sectors';
+          } else {
+            finalPublisher = appendUrlTitleToPublisher(capitalizedBrand, finalUrl);
+          }
+        } else {
+          finalPublisher = appendUrlTitleToPublisher(capitalizedBrand, finalUrl);
+        }
+      } catch (e) {
+        // Keep finalPublisher as capitalizedBrand
+      }
+    }
+
+    if (!finalPublisher || finalPublisher.length < 2 || finalPublisher.toLowerCase() === 'source') {
         try {
           const urlObj = new URL(finalUrl);
-          publisher = urlObj.hostname.replace(/^www\./, '');
-          // Capitalize first letter
-          publisher = publisher.charAt(0).toUpperCase() + publisher.slice(1);
+          let pub = urlObj.hostname.replace(/^www\./, '');
+          finalPublisher = pub.charAt(0).toUpperCase() + pub.slice(1);
         } catch (e) {
-          publisher = 'Source';
+          finalPublisher = 'Source';
         }
     }
     
@@ -243,7 +350,7 @@ export function extractLinks(text: string): LinkData[] {
       }
     }
 
-    results.push({ publisher, url: finalUrl, year });
+    results.push({ publisher: finalPublisher, url: finalUrl, year });
     lastIndex = urlRegex.lastIndex;
   }
   
