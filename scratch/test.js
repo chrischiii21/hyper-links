@@ -1,36 +1,6 @@
-/**
- * Robust link extraction and hyperlinking utilities
- * Based on the logic from RichTextCopier.tsx
- */
+const urlRegex = /(?:^|[^a-zA-Z0-9])((?:https?:\/\/|www\.)[^\s\)\*>]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?)/gi;
 
-export interface LinkData {
-  publisher: string;
-  url: string;
-  year?: string;
-}
-
-export function cleanPublisherText(text: string): string {
-  let clean = text
-    .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-    .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
-    .trim();
-    
-  // Clean up leading "Source:" or similar markers first, including any colons and spaces
-  clean = clean.replace(/^(?:Sources?|References?)\s*[:\-–—\s]*/i, '').trim();
-  
-  // Remove trailing year/dates (e.g. ", 2026")
-  const parts = clean.split(/[,;:]/).map(p => p.trim()).filter(Boolean);
-  if (parts.length > 1) {
-    if (/^\d{4}$/.test(parts[parts.length - 1])) {
-      parts.pop();
-    }
-    clean = parts.join(', ').trim();
-  }
-  
-  return clean;
-}
-
-export function appendUrlTitleToPublisher(publisher: string, urlStr: string): string {
+function appendUrlTitleToPublisher(publisher, urlStr) {
   if (!urlStr) return publisher;
   try {
     const url = new URL(urlStr.startsWith('http') ? urlStr : 'https://' + urlStr);
@@ -129,9 +99,9 @@ export function appendUrlTitleToPublisher(publisher: string, urlStr: string): st
   }
 }
 
-export function deduplicateAndEnhancePublishers(links: LinkData[]): LinkData[] {
+function deduplicateAndEnhancePublishers(links) {
   // Deduplicate by URL first
-  const seenUrls = new Set<string>();
+  const seenUrls = new Set();
   const uniqueLinks = links.filter(link => {
     if (seenUrls.has(link.url)) return false;
     seenUrls.add(link.url);
@@ -139,7 +109,7 @@ export function deduplicateAndEnhancePublishers(links: LinkData[]): LinkData[] {
   });
 
   // Count occurrences of each publisher (case-insensitive)
-  const publisherCounts = new Map<string, number>();
+  const publisherCounts = new Map();
   uniqueLinks.forEach(link => {
     const pubLower = link.publisher.toLowerCase();
     publisherCounts.set(pubLower, (publisherCounts.get(pubLower) || 0) + 1);
@@ -162,11 +132,8 @@ export function deduplicateAndEnhancePublishers(links: LinkData[]): LinkData[] {
   });
 }
 
-/**
- * Extracts links from text and identifies publishers
- */
-export function extractLinks(text: string): LinkData[] {
-  const results: LinkData[] = [];
+function extractLinks(text) {
+  const results = [];
   
   // Clean up standard headers (e.g. Sources, Use Cases, References) at the very beginning, including markdown markers
   let cleanText = text.replace(/^(?:#+\s*)?(?:Sources?|Use\s+Cases?|References?)[:\s\n]*/i, '').trim();
@@ -174,8 +141,6 @@ export function extractLinks(text: string): LinkData[] {
   // Strip HTML tags to avoid matching URLs with trailing </strong> etc.
   cleanText = cleanText.replace(/<[^>]*>/g, ' ');
   
-  // Find all URLs in the text
-  const urlRegex = /(?:^|[^a-zA-Z0-9])((?:https?:\/\/|www\.)[^\s\)\*>]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?)/gi;
   let match;
   let lastIndex = 0;
   
@@ -183,20 +148,24 @@ export function extractLinks(text: string): LinkData[] {
     const url = match[1]?.trim();
     if (!url) continue;
 
-    // Calculate exact start index of the URL (ignoring the prefix character)
     const matchIndex = match.index + match[0].indexOf(match[1]);
     
-    // Text between the last URL (or start) and this URL
     let beforeUrl = cleanText.substring(lastIndex, matchIndex).trim();
     if (beforeUrl.includes('\n')) {
       const lines = beforeUrl.split('\n');
       beforeUrl = lines[lines.length - 1].trim();
     }
     
-    let publisher = cleanPublisherText(beforeUrl);
+    let publisher = beforeUrl
+      .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+      .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+      .trim();
+
+    // Clean up leading "Source:" or similar markers first
+    publisher = publisher.replace(/^(?:Sources?|References?)\s*[:\-–—\s]*/i, '').trim();
+
     let year = '';
 
-    // Handle the case where there are parentheses before the URL (Source: Publisher, 2026, URL)
     const parenMatch = publisher.match(/(.*?)\s*\((.*?)$/);
     
     if (parenMatch) {
@@ -204,16 +173,14 @@ export function extractLinks(text: string): LinkData[] {
        let inside = parenMatch[2].replace(/\)$/, '').trim();
        
        if (inside) {
-           inside = cleanPublisherText(inside);
+           inside = inside.replace(/^(?:Sources?|References?)\s*[:\-–—\s]*/i, '').trim();
            const parts = inside.split(/[,;:]/).map(p => p.trim()).filter(Boolean);
            const firstInside = parts[0];
            
-           // Identify year in parts
            parts.forEach(part => {
              if (/^\d{4}$/.test(part)) year = part;
            });
 
-           // Identification logic for dates/years
            const isMonthOnly = /^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Aug|Sept|Oct|Nov|Dec)(\s+\d{1,2})?$/i.test(firstInside);
            const isYearOrDate = /^\d{4}$/.test(firstInside) || 
                                 /^(Q[1-4]\s+)?\d{4}$/i.test(firstInside) || 
@@ -230,7 +197,6 @@ export function extractLinks(text: string): LinkData[] {
            publisher = outside;
        }
     } else {
-       // Fallback for non-parenthesized sources: Publisher, 2026, URL
        const parts = publisher.split(/[,;:]/).map(p => p.trim()).filter(Boolean);
        if (parts.length > 1) {
          publisher = parts[0];
@@ -242,7 +208,6 @@ export function extractLinks(text: string): LinkData[] {
        }
     }
     
-    // Ensure URL has a protocol
     let finalUrl = url;
     if (!url.toLowerCase().startsWith('http') && !url.toLowerCase().startsWith('www.')) {
         finalUrl = 'https://' + url;
@@ -250,10 +215,7 @@ export function extractLinks(text: string): LinkData[] {
         finalUrl = 'https://' + url;
     }
 
-    // Custom brand/description extraction from the parsed "publisher" text
     let finalPublisher = publisher;
-    
-    // 1. Extract brand name from URL
     let brand = '';
     try {
       const urlObj = new URL(finalUrl);
@@ -272,7 +234,6 @@ export function extractLinks(text: string): LinkData[] {
       }
     } catch (e) {}
 
-    // Capitalize brand name properly
     let capitalizedBrand = '';
     if (brand) {
       if (brand.toLowerCase() === 'blend360') {
@@ -284,7 +245,6 @@ export function extractLinks(text: string): LinkData[] {
       }
     }
 
-    // 2. See if the publisher text contains the brand, or is a description
     let isBrandEquivalent = false;
     if (capitalizedBrand && publisher && publisher.toLowerCase() !== 'source') {
       const pubLower = publisher.toLowerCase();
@@ -299,27 +259,22 @@ export function extractLinks(text: string): LinkData[] {
       } else {
         let description = '';
         if (pubLower.startsWith(brandLower)) {
-          // e.g. "Jalios clients page" -> "clients page"
           description = publisher.substring(capitalizedBrand.length).trim();
         } else if (pubLower.endsWith(brandLower)) {
-          // e.g. "clients page Jalios" -> "clients page"
           description = publisher.substring(0, publisher.length - capitalizedBrand.length).trim();
         } else {
-          // E.g. "clients page" -> description is "clients page", brand is "Jalios"
           const isGenericDesc = /^(clients|homepage|sectors|solutions|website|about|features|pricing|blog|news|documentation|docs)/i.test(pubLower);
           if (isGenericDesc) {
             description = publisher;
           }
         }
 
-        // Clean up description prefix/suffix punctuation
         description = description
           .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
           .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
           .trim();
 
         if (description) {
-          // Standardize common descriptions
           let cleanDesc = description;
           if (/^homepage$/i.test(cleanDesc)) {
             cleanDesc = 'Homepage';
@@ -328,7 +283,6 @@ export function extractLinks(text: string): LinkData[] {
           } else if (/^sectors\s*pages?$/i.test(cleanDesc) || /^sectors$/i.test(cleanDesc) || /^solutions\/secteurs$/i.test(cleanDesc) || /^secteurs$/i.test(cleanDesc)) {
             cleanDesc = 'Sectors';
           } else {
-            // Capitalize description words
             cleanDesc = cleanDesc.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
           }
           finalPublisher = `${capitalizedBrand} - ${cleanDesc}`;
@@ -342,8 +296,6 @@ export function extractLinks(text: string): LinkData[] {
       isBrandEquivalent = true;
     }
 
-    // 3. Fallback/Specific Mappings: If the publisher ended up being just the brand name (or fallback), 
-    // try to get a more specific page title from the URL path.
     if (isBrandEquivalent && capitalizedBrand) {
       try {
         const urlObj = new URL(finalUrl);
@@ -362,9 +314,7 @@ export function extractLinks(text: string): LinkData[] {
         } else {
           finalPublisher = appendUrlTitleToPublisher(finalPublisher, finalUrl);
         }
-      } catch (e) {
-        // Keep finalPublisher
-      }
+      } catch (e) {}
     }
 
     if (!finalPublisher || finalPublisher.length < 2 || finalPublisher.toLowerCase() === 'source') {
@@ -377,20 +327,6 @@ export function extractLinks(text: string): LinkData[] {
         }
     }
     
-    // SPECIAL CASE: If the "URL" we found is actually a naked domain that was immediately followed by a comma, 
-    // it was likely the publisher name. We skip it if there's a better URL coming up.
-    const remainingText = cleanText.substring(urlRegex.lastIndex);
-    const isNakedDomain = !url.toLowerCase().startsWith('http') && !url.toLowerCase().startsWith('www.');
-    if (isNakedDomain && remainingText.trim().startsWith(',')) {
-      // Look ahead for a real URL in the same citation block
-      const nextCitationEnd = remainingText.indexOf(')');
-      const nextFullUrl = remainingText.substring(0, nextCitationEnd > 0 ? nextCitationEnd : 50).match(/https?:\/\/[^\s\)]+/);
-      if (nextFullUrl) {
-        // Skip this naked domain match, it's just the publisher name
-        continue;
-      }
-    }
-
     results.push({ publisher: finalPublisher, url: finalUrl, year });
     lastIndex = urlRegex.lastIndex;
   }
@@ -398,17 +334,11 @@ export function extractLinks(text: string): LinkData[] {
   return deduplicateAndEnhancePublishers(results);
 }
 
-/**
- * Converts a string with raw links into a formatted HTML list of hyperlinked sources
- */
-export function generateSourceListHtml(text: string): string {
-  const links = extractLinks(text);
-  if (links.length === 0) return text;
+const testInput = `Sources
+(Source: FICS, 2026, https://www.fics.com/products/the-fics-advantage/)
+(Source: FICS, 2026, https://www.fics.com/products/mortgage-servicer/)
+(Source: FICS, 2026, https://www.fics.com/products/loan-producer/)
+(Source: FICS, 2026, https://www.fics.com/products/commercial-servicer/)
+(Source: Business Wire, 2026, https://www.businesswire.com/news/home/20260212981929/en)`;
 
-  let html = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
-  links.forEach(link => {
-    html += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
-  });
-  html += '</ul>';
-  return html;
-}
+console.log(JSON.stringify(extractLinks(testInput), null, 2));

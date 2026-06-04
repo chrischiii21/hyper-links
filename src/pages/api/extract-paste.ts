@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { marked } from 'marked';
 import * as cheerio from 'cheerio';
-import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers } from '../../lib/linkUtils';
+import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers, cleanPublisherText } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
   "Executive Summary",
@@ -374,11 +374,7 @@ export const POST: APIRoute = async ({ request }) => {
                 const hasStructuredMarker = /[:\u2014\u2013]|(?:\s-\s)/.test(precedingText);
                 
                 if (hasStructuredMarker || isNakedUrl) {
-                  const cleanPublisher = precedingText
-                    .replace(/^(?:#+\s*)?(?:Sources?|Use\s+Cases?|References?)[:\s\n]*/i, '') // strip headers
-                    .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-                    .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
-                    .trim();
+                  const cleanPublisher = cleanPublisherText(precedingText);
                     
                   if (cleanPublisher && cleanPublisher.length > 2 && cleanPublisher.toLowerCase() !== 'source') {
                     linkText = cleanPublisher;
@@ -387,10 +383,7 @@ export const POST: APIRoute = async ({ request }) => {
               }
               
               // Clean up the linkText (strip leading/trailing bullets, etc.)
-              let cleanPublisher = linkText
-                .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-                .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
-                .trim();
+              let cleanPublisher = cleanPublisherText(linkText);
               
               // Fallback to hostname if it's still a naked URL
               const isStillNaked = /^(?:https?:\/\/|www\.)[^\s]+$/i.test(cleanPublisher) || 
