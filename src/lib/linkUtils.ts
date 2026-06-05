@@ -11,8 +11,8 @@ export interface LinkData {
 
 export function cleanPublisherText(text: string): string {
   let clean = text
-    .replace(/^[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-    .replace(/[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+    .replace(/^[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+    .replace(/[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
     .trim();
     
   // Clean up leading "Source:" or similar markers first, including any colons and spaces
@@ -129,6 +129,25 @@ export function appendUrlTitleToPublisher(publisher: string, urlStr: string): st
   }
 }
 
+export function enhancePublisher(publisher: string, urlStr: string): string {
+  try {
+    const urlObj = new URL(urlStr.startsWith('http') ? urlStr : 'https://' + urlStr);
+    const pathname = urlObj.pathname.replace(/\/$/, '').toLowerCase();
+    
+    if (urlObj.hostname.replace(/^www\./i, '') === 'jalios.com') {
+      if (pathname === '/fr' || pathname === '/fr/' || pathname === '') {
+        return 'Jalios - Homepage';
+      } else if (pathname === '/fr/clients') {
+        return 'Jalios - Clients';
+      } else if (pathname === '/fr/solutions/secteurs') {
+        return 'Jalios - Sectors';
+      }
+    }
+  } catch (e) {}
+  
+  return appendUrlTitleToPublisher(publisher, urlStr);
+}
+
 export function deduplicateAndEnhancePublishers(links: LinkData[]): LinkData[] {
   // Deduplicate by URL first
   const seenUrls = new Set<string>();
@@ -151,7 +170,7 @@ export function deduplicateAndEnhancePublishers(links: LinkData[]): LinkData[] {
     const count = publisherCounts.get(pubLower) || 0;
     
     if (count > 1) {
-      const enhancedPublisher = appendUrlTitleToPublisher(link.publisher, link.url);
+      const enhancedPublisher = enhancePublisher(link.publisher, link.url);
       return {
         ...link,
         publisher: enhancedPublisher
@@ -357,11 +376,13 @@ export function extractLinks(text: string): LinkData[] {
 
         // Clean up description prefix/suffix punctuation
         description = description
-          .replace(/^[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-          .replace(/[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+          .replace(/^[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+          .replace(/[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
           .trim();
 
-        if (description) {
+        const isTldOnly = /^\.[a-z]{2,10}$/i.test(description);
+
+        if (description && !isTldOnly) {
           // Standardize common descriptions
           let cleanDesc = description;
           if (/^homepage$/i.test(cleanDesc)) {
@@ -376,7 +397,7 @@ export function extractLinks(text: string): LinkData[] {
           }
           finalPublisher = `${capitalizedBrand} - ${cleanDesc}`;
         } else {
-          finalPublisher = capitalizedBrand;
+          finalPublisher = isTldOnly ? publisher : capitalizedBrand;
           isBrandEquivalent = true;
         }
       }
@@ -385,30 +406,7 @@ export function extractLinks(text: string): LinkData[] {
       isBrandEquivalent = true;
     }
 
-    // 3. Fallback/Specific Mappings: If the publisher ended up being just the brand name (or fallback), 
-    // try to get a more specific page title from the URL path.
-    if (isBrandEquivalent && capitalizedBrand) {
-      try {
-        const urlObj = new URL(finalUrl);
-        const pathname = urlObj.pathname.replace(/\/$/, '').toLowerCase();
-        
-        if (urlObj.hostname.replace(/^www\./i, '') === 'jalios.com') {
-          if (pathname === '/fr' || pathname === '/fr/' || pathname === '') {
-            finalPublisher = 'Jalios - Homepage';
-          } else if (pathname === '/fr/clients') {
-            finalPublisher = 'Jalios - Clients';
-          } else if (pathname === '/fr/solutions/secteurs') {
-            finalPublisher = 'Jalios - Sectors';
-          } else {
-            finalPublisher = appendUrlTitleToPublisher(finalPublisher, finalUrl);
-          }
-        } else {
-          finalPublisher = appendUrlTitleToPublisher(finalPublisher, finalUrl);
-        }
-      } catch (e) {
-        // Keep finalPublisher
-      }
-    }
+
 
     if (!finalPublisher || finalPublisher.length < 2 || finalPublisher.toLowerCase() === 'source') {
         try {

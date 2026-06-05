@@ -464,6 +464,91 @@ export const POST: APIRoute = async ({ request }) => {
       // SPECIAL CRITERIA: For Executive Summary (index 0), transform all H2 sub-headers into bullet points
       if (index === 0) {
         const $es = cheerio.load(bodyHtml, null, false);
+
+        // Convert any tables in Executive Summary into bullet points
+        $es('table').each((_, tableEl) => {
+          const $table = $es(tableEl);
+          const listItems: string[] = [];
+          $table.find('tr').each((_, trEl) => {
+            const cells = $es(trEl).find('td, th');
+            if (cells.length === 2) {
+              const keyText = $es(cells[0]).text().trim();
+              const valueHtml = $es(cells[1]).html() || '';
+              const valueText = $es(cells[1]).text().trim();
+              
+              if (keyText && valueText) {
+                const $val = cheerio.load(valueHtml, null, false);
+                $val('p, div, h1, h2, h3, h4, h5, h6').each((_, blockEl) => {
+                  const $block = $val(blockEl);
+                  $block.replaceWith($block.html() || '');
+                });
+
+                let cleanKey = keyText.replace(/:$/, '').trim();
+                let cleanValue = $val.html() || '';
+                cleanValue = cleanValue.replace(/^[•\-\u2022\u2013\u2014\s\t*:]+/, '').trim();
+                
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${cleanKey}:</strong> ${cleanValue}</li>`);
+              } else if (keyText || valueText) {
+                const targetHtml = keyText ? $es(cells[0]).html() || '' : valueHtml;
+                const $val = cheerio.load(targetHtml, null, false);
+                $val('p, div, h1, h2, h3, h4, h5, h6').each((_, blockEl) => {
+                  const $block = $val(blockEl);
+                  $block.replaceWith($block.html() || '');
+                });
+                let cleanHtml = $val.html() || '';
+                cleanHtml = cleanHtml.replace(/^[•\-\u2022\u2013\u2014\s\t*:]+/, '').trim();
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${cleanHtml}</li>`);
+              }
+            } else if (cells.length === 1) {
+              let cellHtml = $es(cells[0]).html() || '';
+              const $val = cheerio.load(cellHtml, null, false);
+              $val('p, div, h1, h2, h3, h4, h5, h6').each((_, blockEl) => {
+                const $block = $val(blockEl);
+                $block.replaceWith($block.html() || '');
+              });
+              let cleanHtml = $val.html() || '';
+              cleanHtml = cleanHtml.replace(/^[•\-\u2022\u2013\u2014\s\t*:]+/, '').trim();
+              if (cleanHtml) {
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${cleanHtml}</li>`);
+              }
+            } else if (cells.length > 2) {
+              const firstCellText = $es(cells[0]).text().trim();
+              let cleanKey = firstCellText.replace(/:$/, '').trim();
+              
+              const remainingHtmlParts: string[] = [];
+              cells.slice(1).each((_, cell) => {
+                let cellHtml = $es(cell).html() || '';
+                const $val = cheerio.load(cellHtml, null, false);
+                $val('p, div, h1, h2, h3, h4, h5, h6').each((_, blockEl) => {
+                  const $block = $val(blockEl);
+                  $block.replaceWith($block.html() || '');
+                });
+                let cleanCell = $val.html() || '';
+                cleanCell = cleanCell.replace(/^[•\-\u2022\u2013\u2014\s\t*:]+/, '').trim();
+                if (cleanCell) {
+                  remainingHtmlParts.push(cleanCell);
+                }
+              });
+              
+              const remainingHtml = remainingHtmlParts.join(' - ');
+              if (cleanKey && remainingHtml) {
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${cleanKey}:</strong> ${remainingHtml}</li>`);
+              } else {
+                const combined = [cleanKey, remainingHtml].filter(Boolean).join(' - ');
+                if (combined) {
+                  listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${combined}</li>`);
+                }
+              }
+            }
+          });
+          if (listItems.length > 0) {
+            const listHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">\n${listItems.join('\n')}\n</ul>`;
+            $table.replaceWith(listHtml);
+          } else {
+            $table.remove();
+          }
+        });
+
         $es('h2').each((_, h2El) => {
           const $h2 = $es(h2El);
           const h2Text = $h2.text().trim().replace(/:$/, '');
