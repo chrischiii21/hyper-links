@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import * as cheerio from 'cheerio';
-import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers, cleanPublisherText } from '../../lib/linkUtils';
+import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers, cleanPublisherText, type LinkData } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
   "Executive Summary",
@@ -62,7 +62,6 @@ const SUB_HEADERS = [
   "Level of Criticality",
   "Level of Stickiness",
   "Leadership Summary",
-  "Leadership Team",
   "Team Stability",
   "Sales Channels & Partner Strategy",
   "Sales Channels and Partner Strategy",
@@ -164,6 +163,21 @@ export const POST: APIRoute = async ({ request }) => {
         };
 
         const normalizedInner = normalizeForComparison(innerText);
+
+        // Check if there is already an h2 with this text directly preceding
+        let $block = $el;
+        while ($block.length > 0 && ['span', 'strong', 'b', 'em', 'i'].includes($block[0].tagName)) {
+          $block = $block.parent();
+        }
+        let hasDuplicateH2Preceding = false;
+        const $prevBlock = $block.prev();
+        if ($prevBlock.length > 0 && $prevBlock[0].tagName === 'h2') {
+          if (normalizeForComparison($prevBlock.text().trim()) === normalizedInner) {
+            hasDuplicateH2Preceding = true;
+          }
+        }
+        if (hasDuplicateH2Preceding) return;
+
         const canonicalHeader = SUB_HEADERS.find(h => normalizeForComparison(h) === normalizedInner);
         if (canonicalHeader) {
           innerText = canonicalHeader;
@@ -535,7 +549,7 @@ export const POST: APIRoute = async ({ request }) => {
 
       const getLinksFromElement = ($el: any): LinkData[] => {
         const links: LinkData[] = [];
-        $el.find('a').each((_, aEl: any) => {
+        $el.find('a').each((_: number, aEl: any) => {
           const href = $body(aEl).attr('href');
           let linkText = $body(aEl).text().trim();
           if (href) {

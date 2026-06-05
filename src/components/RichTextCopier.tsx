@@ -42,7 +42,7 @@ export default function RichTextCopier() {
   const [showDevNotice, setShowDevNotice] = useState(false);
 
   const [toastMessage, setToastMessage] = useState<{title: string, type: 'success'|'info'|'error'} | null>(null);
-  const toastTimeoutRef = useRef<NodeJS.Timeout>();
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (title: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToastMessage({ title, type });

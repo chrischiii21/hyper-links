@@ -162,6 +162,20 @@ export function deduplicateAndEnhancePublishers(links: LinkData[]): LinkData[] {
   });
 }
 
+const VERBS = new Set([
+  'was', 'is', 'are', 'were', 'been', 'has', 'had', 'have',
+  'acquired', 'founded', 'merged', 'purchased', 'bought', 'sold',
+  'integrated', 'joined', 'provides', 'offers', 'helps', 'allows',
+  'used', 'developed', 'built', 'created', 'launched', 'released',
+  'serves', 'focuses', 'operates'
+]);
+
+const CITATION_WORDS = new Set([
+  'source', 'sources', 'ref', 'refs', 'reference', 'references',
+  'url', 'urls', 'link', 'links', 'at', 'see', 'from', 'http', 'https', 'www',
+  'website', 'websites', 'homepage', 'homepages', 'page', 'pages', 'blog', 'blogs', 'news', 'portal', 'portals'
+]);
+
 /**
  * Extracts links from text and identifies publishers
  */
@@ -183,9 +197,38 @@ export function extractLinks(text: string): LinkData[] {
     const url = match[1]?.trim();
     if (!url) continue;
 
-    // Calculate exact start index of the URL (ignoring the prefix character)
     const matchIndex = match.index + match[0].indexOf(match[1]);
-    
+    const endIndex = matchIndex + url.length;
+
+    // Check if it's a naked domain (no http/https or www.)
+    const isNakedDomain = !/^(?:https?:\/\/|www\.)/i.test(url);
+    if (isNakedDomain) {
+      const beforeText = cleanText.substring(0, matchIndex);
+      const afterText = cleanText.substring(endIndex);
+
+      const lastWordMatch = beforeText.match(/([a-zA-Z0-9'-]+)\s*$/);
+      const firstWordMatch = afterText.match(/^\s*([a-zA-Z0-9'-]+)/);
+
+      const lastWord = lastWordMatch ? lastWordMatch[1].toLowerCase() : '';
+      const firstWord = firstWordMatch ? firstWordMatch[1].toLowerCase() : '';
+
+      const lastWordOriginal = lastWordMatch ? lastWordMatch[1] : '';
+      const firstWordOriginal = firstWordMatch ? firstWordMatch[1] : '';
+
+      const isLastWordSentence = lastWordOriginal && /^[a-z]/.test(lastWordOriginal) && !CITATION_WORDS.has(lastWord);
+      const isFirstWordSentence = firstWordOriginal && /^[a-z]/.test(firstWordOriginal) && !CITATION_WORDS.has(firstWord);
+
+      const isLastWordVerb = VERBS.has(lastWord);
+      const isFirstWordVerb = VERBS.has(firstWord);
+
+      const containsVerbs = cleanText.split(/\s+/).some(w => VERBS.has(w.toLowerCase().replace(/[^a-z]/g, '')));
+      const hasExplicitSourcePrefix = /sources?\s*[:\-–—\s]/i.test(beforeText) || /\bsources?\b/i.test(beforeText);
+
+      if ((isLastWordSentence || isFirstWordSentence || isLastWordVerb || isFirstWordVerb || containsVerbs) && !hasExplicitSourcePrefix) {
+        continue;
+      }
+    }
+
     // Text between the last URL (or start) and this URL
     let beforeUrl = cleanText.substring(lastIndex, matchIndex).trim();
     if (beforeUrl.includes('\n')) {
@@ -380,7 +423,6 @@ export function extractLinks(text: string): LinkData[] {
     // SPECIAL CASE: If the "URL" we found is actually a naked domain that was immediately followed by a comma, 
     // it was likely the publisher name. We skip it if there's a better URL coming up.
     const remainingText = cleanText.substring(urlRegex.lastIndex);
-    const isNakedDomain = !url.toLowerCase().startsWith('http') && !url.toLowerCase().startsWith('www.');
     if (isNakedDomain && remainingText.trim().startsWith(',')) {
       // Look ahead for a real URL in the same citation block
       const nextCitationEnd = remainingText.indexOf(')');

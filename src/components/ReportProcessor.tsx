@@ -25,7 +25,7 @@ export default function ReportProcessor() {
   const [mode, setMode] = useState<'upload' | 'paste'>('upload');
   const [pastedText, setPastedText] = useState('');
   const [showInput, setShowInput] = useState(true);
-  const toastTimeoutRef = useRef<NodeJS.Timeout>();
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const showToast = (title: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToastMessage({ title, type });
