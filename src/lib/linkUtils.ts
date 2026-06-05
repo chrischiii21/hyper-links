@@ -79,7 +79,7 @@ export function appendUrlTitleToPublisher(publisher: string, urlStr: string): st
     if (!wordsStr) return publisher;
     
     // Capitalize words
-    const words = wordsStr.split(' ');
+    const words = wordsStr.split(' ').filter(word => !/^\d{9}$/.test(word));
     const capitalized = words.map((word, idx) => {
       if (!word) return '';
       const lower = word.toLowerCase();

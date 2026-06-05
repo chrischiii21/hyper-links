@@ -260,7 +260,7 @@ export default function ReportProcessor() {
                   e.target.value = '';
                 }
               }}
-              className="hidden"
+              className="sr-only"
               accept=".txt,.doc,.docx,.md,.pdf"
             />
             <div className="flex flex-col items-center justify-center space-y-6 text-center relative z-10">

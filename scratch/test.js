@@ -49,7 +49,7 @@ function appendUrlTitleToPublisher(publisher, urlStr) {
     if (!wordsStr) return publisher;
     
     // Capitalize words
-    const words = wordsStr.split(' ');
+    const words = wordsStr.split(' ').filter(word => !/^\d{9}$/.test(word));
     const capitalized = words.map((word, idx) => {
       if (!word) return '';
       const lower = word.toLowerCase();
@@ -334,11 +334,7 @@ function extractLinks(text) {
   return deduplicateAndEnhancePublishers(results);
 }
 
-const testInput = `Sources
-(Source: FICS, 2026, https://www.fics.com/products/the-fics-advantage/)
-(Source: FICS, 2026, https://www.fics.com/products/mortgage-servicer/)
-(Source: FICS, 2026, https://www.fics.com/products/loan-producer/)
-(Source: FICS, 2026, https://www.fics.com/products/commercial-servicer/)
-(Source: Business Wire, 2026, https://www.businesswire.com/news/home/20260212981929/en)`;
+const testInput = `Sources: PDS Health Technologies page (www.pdshealth.com/our-businesses/pds-health-technologies/), PDS Health — Strategic Partners (www.pdshealth.com/who-we-are/strategic-partners/), PR Newswire (www.prnewswire.com/news-releases/pds-health-technologies-partners-with-university-of-the-pacific-to-deploy-epic-ehr-across-medical-dental-and-surgical-centers-302722161.html), PR Newswire (www.prnewswire.com/news-releases/carequest-innovation-partners-and-pds-health-collaborate-to-scal/)`;
 
 console.log(JSON.stringify(extractLinks(testInput), null, 2));
+
