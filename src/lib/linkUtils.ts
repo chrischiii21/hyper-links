@@ -11,8 +11,8 @@ export interface LinkData {
 
 export function cleanPublisherText(text: string): string {
   let clean = text
-    .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-    .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+    .replace(/^[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+    .replace(/[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
     .trim();
     
   // Clean up leading "Source:" or similar markers first, including any colons and spaces
@@ -357,8 +357,8 @@ export function extractLinks(text: string): LinkData[] {
 
         // Clean up description prefix/suffix punctuation
         description = description
-          .replace(/^[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-          .replace(/[,\-\(\)\s\t\n;:*\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+          .replace(/^[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+          .replace(/[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
           .trim();
 
         if (description) {

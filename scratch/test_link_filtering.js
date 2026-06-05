@@ -14,6 +14,15 @@ const CITATION_WORDS = new Set([
   'website', 'websites', 'homepage', 'homepages', 'page', 'pages', 'blog', 'blogs', 'news', 'portal', 'portals'
 ]);
 
+function cleanPublisherText(text) {
+  let clean = text
+    .replace(/^[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+    .replace(/[,\-\(\)\s\t\n;:*|\\\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+    .trim();
+  clean = clean.replace(/^(?:Sources?|References?)\s*[:\-–—\s]*/i, '').trim();
+  return clean;
+}
+
 function extractLinks(text) {
   const results = [];
   let cleanText = text.replace(/^(?:#+\s*)?(?:Sources?|Use\s+Cases?|References?)[:\s\n]*/i, '').trim();
@@ -54,33 +63,25 @@ function extractLinks(text) {
       const hasExplicitSourcePrefix = /sources?\s*[:\-–—\s]/i.test(beforeText) || /\bsources?\b/i.test(beforeText);
       
       if ((isLastWordSentence || isFirstWordSentence || isLastWordVerb || isFirstWordVerb || containsVerbs) && !hasExplicitSourcePrefix) {
-        console.log(`Skipped naked domain "${url}" as it appears to be part of a sentence.`);
         continue;
       }
     }
 
-    results.push({ publisher: url, url });
+    let beforeUrl = cleanText.substring(lastIndex, matchIndex).trim();
+    if (beforeUrl.includes('\n')) {
+      const lines = beforeUrl.split('\n');
+      beforeUrl = lines[lines.length - 1].trim();
+    }
+    
+    let publisher = cleanPublisherText(beforeUrl);
+    results.push({ publisher, url });
+    lastIndex = urlRegex.lastIndex;
   }
   return results;
 }
 
-const testCases = [
-  "Company Overview: Rephrase.ai was a Bengaluru-based generative AI text-to-video startup acquired by Adobe.",
-  "Adobe acquired Rephrase.ai in November 2023.",
-  "Source: Rephrase.ai",
-  "source: rephrase.ai",
-  "(Rephrase.ai)",
-  "rephrase.ai, 2023",
-  "rephrase.ai - website",
-  "rephrase.ai",
-  "- rephrase.ai",
-  "Visit our website at rephrase.ai for more information.",
-  "This was reported by Rephrase.ai.",
-  "According to Rephrase.ai, the market is growing."
-];
+const inputStr = `Sources: Synavision CB Insights profile, https://www.cbinsights.com/company/synavision | Synavision AMEV 178 press release, https://www.synavision.de/en/news-posts/ | Synavision ai.lab, https://www.synavision.de/en/ailab/ | MarketDataForecast (Europe Energy Management Systems Market, 2024), https://www.marketdataforecast.com/market-reports/europe-energy-management-systems-market`;
 
-testCases.forEach((tc, idx) => {
-  console.log(`\n--- Test Case ${idx + 1}: "${tc}" ---`);
-  const res = extractLinks(tc);
-  console.log("Extracted links:", JSON.stringify(res));
-});
+console.log("Input:", inputStr);
+const res = extractLinks(inputStr);
+console.log("Extracted links:", JSON.stringify(res, null, 2));

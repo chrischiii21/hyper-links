@@ -214,7 +214,7 @@ export const POST: APIRoute = async ({ request }) => {
 
         // --- SUB-HEADER PROCESSING (Same as extract.ts) ---
         const escapedSubHeaders = SUB_HEADERS.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-        const prefixPattern = `(?:[o\\-\\u2013\\u2014\\u2022\\s]*)(?:(?:[A-Za-z0-9]+[.\\-\\u2013\\u2014)\\s]+)*)?`;
+        const prefixPattern = `(?:[o\\s\\u2013\\u2014\\u2022-]*)(?:(?:[A-Za-z0-9]+[.:\\s\\u2013\\u2014)-]+)*)?`;
         const subHeaderRegex = new RegExp(`^${prefixPattern}(${escapedSubHeaders})\\s*[:\\-\\u2013\\u2014]?\\s*(.*)$`, 'is');
         const titleRegexHtml = new RegExp(`^(?:<[^>]+>|\\s)*${prefixPattern}(${escapedSubHeaders})(?:<[^>]+>|\\s)*[:\\-\\u2013\\u2014]?(?:<[^>]+>|\\s)*`, 'i');
 
@@ -238,15 +238,17 @@ export const POST: APIRoute = async ({ request }) => {
 
             const normalizedInner = normalizeForComparison(innerText);
 
-            // Check if there is already an h2 with this text directly preceding
+            // Check if there is already a header with this text directly preceding
             let $block = $(el);
             while ($block.length > 0 && ['span', 'strong', 'b', 'em', 'i'].includes($block[0].tagName)) {
               $block = $block.parent();
             }
             let hasDuplicateH2Preceding = false;
             const $prevBlock = $block.prev();
-            if ($prevBlock.length > 0 && $prevBlock[0].tagName === 'h2') {
-              if (normalizeForComparison($prevBlock.text().trim()) === normalizedInner) {
+            if ($prevBlock.length > 0) {
+              const prevTagName = $prevBlock[0].tagName.toLowerCase();
+              const isHeader = /^h[1-6]$/.test(prevTagName) || $prevBlock.attr('data-subheader') === 'true';
+              if (isHeader && normalizeForComparison($prevBlock.text().trim()) === normalizedInner) {
                 hasDuplicateH2Preceding = true;
               }
             }
@@ -368,6 +370,9 @@ export const POST: APIRoute = async ({ request }) => {
 
         const getLinksFromElement = ($el: any): LinkData[] => {
           const links: LinkData[] = [];
+          let lastIndex = 0;
+          const parentText = $el.text();
+
           $el.find('a').each((_: number, aEl: any) => {
             const href = $(aEl).attr('href');
             let linkText = $(aEl).text().trim();
@@ -376,11 +381,10 @@ export const POST: APIRoute = async ({ request }) => {
               const isNakedUrl = /^(?:https?:\/\/|www\.)[^\s]+$/i.test(linkText) || 
                                  /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?$/i.test(linkText);
               
-              const parentText = $el.text();
-              const anchorIndex = parentText.indexOf(linkText);
+              const anchorIndex = parentText.indexOf(linkText, lastIndex);
               
-              if (anchorIndex > 0) {
-                let precedingText = parentText.substring(0, anchorIndex).trim();
+              if (anchorIndex >= lastIndex) {
+                let precedingText = parentText.substring(lastIndex, anchorIndex).trim();
                 if (precedingText.includes('\n')) {
                   const lines = precedingText.split('\n');
                   precedingText = lines[lines.length - 1].trim();
@@ -395,6 +399,7 @@ export const POST: APIRoute = async ({ request }) => {
                     linkText = cleanPublisher;
                   }
                 }
+                lastIndex = anchorIndex + $(aEl).text().trim().length;
               }
               
               // Clean up the linkText (strip leading/trailing bullets, etc.)
@@ -430,7 +435,7 @@ export const POST: APIRoute = async ({ request }) => {
           
           // Check if it's a source citation (usually starts with (Source: or contains Source:)
           // Also handle cases where it's just a raw link list
-          const hasSourceMarker = text.toLowerCase().includes('source:');
+          const hasSourceMarker = /sources?\s*:/i.test(text);
           const links = getLinksFromElement($el);
           
           if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
