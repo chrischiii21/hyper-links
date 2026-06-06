@@ -137,7 +137,19 @@ export const POST: APIRoute = async ({ request }) => {
       if (!rawMarkdown) {
         htmlBody = "<p>No content found for this section.</p>";
       } else {
-        const rawHtml = await marked.parse(rawMarkdown);
+        let processedMarkdown = rawMarkdown;
+        processedMarkdown = processedMarkdown
+          .split('\n')
+          .map(line => {
+            const trimmed = line.trim();
+            if (/^[•●▪◦]\s*/.test(trimmed)) {
+              return '- ' + trimmed.replace(/^[•●▪◦]\s*/, '');
+            }
+            return line;
+          })
+          .join('\n');
+
+        const rawHtml = await marked.parse(processedMarkdown);
         const $ = cheerio.load(rawHtml, null, false);
 
         // PRE-PROCESS: Remove empty paragraphs or those containing only &nbsp; or <br>
@@ -218,97 +230,101 @@ export const POST: APIRoute = async ({ request }) => {
         const subHeaderRegex = new RegExp(`^${prefixPattern}(${escapedSubHeaders})\\s*[:\\-\\u2013\\u2014]?\\s*(.*)$`, 'is');
         const titleRegexHtml = new RegExp(`^(?:<[^>]+>|\\s)*${prefixPattern}(${escapedSubHeaders})(?:<[^>]+>|\\s)*[:\\-\\u2013\\u2014]?(?:<[^>]+>|\\s)*`, 'i');
 
-        $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b, em, i').each((_, el) => {
-          const text = $(el).text().trim();
-          const cleanCompareText = text.replace(/[:\-\u2013\u2014]$/, '').trim();
-          const match = subHeaderRegex.exec(text);
-          
-          if (match) {
-            let innerText = match[1];
-            const remainingText = match[2];
+        if (index !== 0) {
+          $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b, em, i').each((_, el) => {
+            const text = $(el).text().trim();
+            const cleanCompareText = text.replace(/[:\-\u2013\u2014]$/, '').trim();
+            const match = subHeaderRegex.exec(text);
             
-            // Map matched subheader text to its exact canonical Title Case equivalent from SUB_HEADERS
-            const normalizeForComparison = (str: string) => {
-              return str
-                .toLowerCase()
-                .replace(/\b(and|&)\b/g, 'and')
-                .replace(/[^a-z0-9]/g, '')
-                .trim();
-            };
+            if (match) {
+              let innerText = match[1];
+              const remainingText = match[2];
+              
+              // Map matched subheader text to its exact canonical Title Case equivalent from SUB_HEADERS
+              const normalizeForComparison = (str: string) => {
+                return str
+                  .toLowerCase()
+                  .replace(/\b(and|&)\b/g, 'and')
+                  .replace(/[^a-z0-9]/g, '')
+                  .trim();
+              };
 
-            const normalizedInner = normalizeForComparison(innerText);
+              const normalizedInner = normalizeForComparison(innerText);
 
-            // Check if there is already a header with this text directly preceding
-            let $block = $(el);
-            while ($block.length > 0 && ['span', 'strong', 'b', 'em', 'i'].includes($block[0].tagName)) {
-              $block = $block.parent();
-            }
-            let hasDuplicateH2Preceding = false;
-            const $prevBlock = $block.prev();
-            if ($prevBlock.length > 0) {
-              const prevTagName = $prevBlock[0].tagName.toLowerCase();
-              const isHeader = /^h[1-6]$/.test(prevTagName) || $prevBlock.attr('data-subheader') === 'true';
-              if (isHeader && normalizeForComparison($prevBlock.text().trim()) === normalizedInner) {
-                hasDuplicateH2Preceding = true;
+              // Check if there is already a header with this text directly preceding
+              let $block = $(el);
+              while ($block.length > 0 && ['span', 'strong', 'b', 'em', 'i'].includes($block[0].tagName)) {
+                $block = $block.parent();
               }
-            }
-            if (hasDuplicateH2Preceding) return;
+              let hasDuplicateH2Preceding = false;
+              const $prevBlock = $block.prev();
+              if ($prevBlock.length > 0) {
+                const prevTagName = $prevBlock[0].tagName.toLowerCase();
+                const isHeader = /^h[1-6]$/.test(prevTagName) || $prevBlock.attr('data-subheader') === 'true';
+                if (isHeader && normalizeForComparison($prevBlock.text().trim()) === normalizedInner) {
+                  hasDuplicateH2Preceding = true;
+                }
+              }
+              if (hasDuplicateH2Preceding) return;
 
-            const canonicalHeader = SUB_HEADERS.find(h => normalizeForComparison(h) === normalizedInner);
-            if (canonicalHeader) {
-              innerText = canonicalHeader;
-            }
+              const canonicalHeader = SUB_HEADERS.find(h => normalizeForComparison(h) === normalizedInner);
+              if (canonicalHeader) {
+                innerText = canonicalHeader;
+              }
 
-            if (innerText.toLowerCase() === 'additional note' || innerText.toLowerCase() === 'additional notes') {
-              innerText = 'Additional Important Note';
-            }
-            
-            // SPECIAL CASE: Ensure we don't convert a main section title into a sub-header
-            const matchesMainTitle = MATCH_PATTERNS.some(pattern => 
-              new RegExp(`^${prefixPattern}${pattern}\\s*$`, 'i').test(cleanCompareText)
-            );
-            if (matchesMainTitle) return;
+              if (innerText.toLowerCase() === 'additional note' || innerText.toLowerCase() === 'additional notes') {
+                innerText = 'Additional Important Note';
+              }
+              
+              // SPECIAL CASE: Ensure we don't convert a main section title into a sub-header
+              const matchesMainTitle = MATCH_PATTERNS.some(pattern => 
+                new RegExp(`^${prefixPattern}${pattern}\\s*$`, 'i').test(cleanCompareText)
+              );
+              if (matchesMainTitle) return;
 
-            const h2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
-            
-            if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'em', 'i', 'strong', 'b'].includes(el.tagName)) {
-              if (remainingText && remainingText.trim().length > 0) {
-                // SPECIAL CASE: Beautify links for Sources
-                if (innerText.toLowerCase() === 'sources') {
-                  const links = extractLinks(remainingText);
-                  if (links.length > 0) {
-                    const pluralizedLabel = links.length === 1 ? 'Source' : 'Sources';
-                    const pluralizedH2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${pluralizedLabel}</span></h2>`;
-                    const linksHtml = generateSourceListHtml(remainingText);
-                    $(el).replaceWith(`${pluralizedH2Html}\n${linksHtml}`);
-                    return;
+              const h2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
+              
+              if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'em', 'i', 'strong', 'b'].includes(el.tagName)) {
+                if (remainingText && remainingText.trim().length > 0) {
+                  // SPECIAL CASE: Beautify links for Sources
+                  if (innerText.toLowerCase() === 'sources') {
+                    const links = extractLinks(remainingText);
+                    if (links.length > 0) {
+                      const pluralizedLabel = links.length === 1 ? 'Source' : 'Sources';
+                      const pluralizedH2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${pluralizedLabel}</span></h2>`;
+                      const linksHtml = generateSourceListHtml(remainingText);
+                      $(el).replaceWith(`${pluralizedH2Html}\n${linksHtml}`);
+                      return;
+                    }
                   }
-                }
 
 
-                let finalHtml = remainingText.trim();
-                const rawHtml = $(el).html() || '';
-                const htmlMatch = titleRegexHtml.exec(rawHtml);
-                if (htmlMatch) {
-                  finalHtml = rawHtml.substring(htmlMatch[0].length).trim();
-                }
-                
-                // Clean up leading punctuation and spaces (e.g. leading periods, colons, dashes, bullets)
-                finalHtml = finalHtml.replace(/^[.\s,;:\-\u2013\u2014\u2022]+/, '').trim();
-                
-                if (finalHtml.length > 0) {
-                  // For sections other than Executive Summary, separate inline headers to new line
-                  const newTag = 'p';
-                  $(el).replaceWith(`${h2Html}\n<${newTag}>${finalHtml}</${newTag}>`);
+                  let finalHtml = remainingText.trim();
+                  const rawHtml = $(el).html() || '';
+                  const htmlMatch = titleRegexHtml.exec(rawHtml);
+                  if (htmlMatch) {
+                    finalHtml = rawHtml.substring(htmlMatch[0].length).trim();
+                  }
+                  
+                  // Clean up leading punctuation and spaces (e.g. leading periods, colons, dashes, bullets)
+                  finalHtml = finalHtml.replace(/^[.\s,;:\-\u2013\u2014\u2022]+/, '').trim();
+                  
+                  if (finalHtml.length > 0) {
+                    // For sections other than Executive Summary, separate inline headers to new line
+                    const newTag = 'p';
+                    $(el).replaceWith(`${h2Html}\n<${newTag}>${finalHtml}</${newTag}>`);
+                  } else {
+                    $(el).replaceWith(h2Html);
+                  }
                 } else {
                   $(el).replaceWith(h2Html);
                 }
-            } else {
-              $(el).replaceWith(h2Html);
+              } else {
+                $(el).replaceWith(h2Html);
+              }
             }
-          }
+          });
         }
-      });
 
         // POST-PROCESS: Group Competition entries into a single bulleted list
         $('h2[data-subheader="true"]').each((_, h2El) => {
@@ -429,21 +445,23 @@ export const POST: APIRoute = async ({ request }) => {
         };
         
         // 1. Identify and remove scattered sources
-        $('p, li, div').each((_, el) => {
-          const $el = $(el);
-          const text = $el.text().trim();
-          
-          // Check if it's a source citation (usually starts with (Source: or contains Source:)
-          // Also handle cases where it's just a raw link list
-          const hasSourceMarker = /sources?\s*:/i.test(text);
-          const links = getLinksFromElement($el);
-          
-          if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
-            // It's likely a source citation
-            sectionSources.push(...links);
-            $el.remove();
-          }
-        });
+        if (index !== 0) {
+          $('p, li, div').each((_, el) => {
+            const $el = $(el);
+            const text = $el.text().trim();
+            
+            // Check if it's a source citation (usually starts with (Source: or contains Source:)
+            // Also handle cases where it's just a raw link list
+            const hasSourceMarker = /sources?\s*:/i.test(text);
+            const links = getLinksFromElement($el);
+            
+            if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
+              // It's likely a source citation
+              sectionSources.push(...links);
+              $el.remove();
+            }
+          });
+        }
 
         // 2. Identify and remove existing "Sources" headers and their consecutive content
         $('h1, h2, h3, h4, h5, h6, p, li, strong, em, b').each((_, h2El) => {
@@ -622,6 +640,139 @@ export const POST: APIRoute = async ({ request }) => {
               $ul.remove();
             }
           });
+
+          // Rename and format first words before the colon in bullet points for Executive Summary
+          const NORM_EXEC_TITLE_MAP: Record<string, string> = {
+            "valueproposition": "Company Overview",
+            "companyoverview": "Company Overview",
+            "productoffering": "Product Overview",
+            "productoverview": "Product Overview",
+            "businessmodel": "Business Model",
+            "customerprofile": "Customer Overview",
+            "customeroverview": "Customer Overview",
+            "customerfeedback": "Customer Feedback & Testimonials",
+            "customerfeedbacktestimonials": "Customer Feedback & Testimonials",
+            "customerfeedbackandtestimonials": "Customer Feedback & Testimonials",
+            "competitivelandscape": "Competitive Landscape",
+            "leadership": "Leadership Team",
+            "leadershipteam": "Leadership Team",
+            "salesgtm": "Sales & Go-To-Market",
+            "salesandgtm": "Sales & Go-To-Market",
+            "salesgotomarket": "Sales & Go-To-Market",
+            "salesandgotomarket": "Sales & Go-To-Market",
+            "rd": "Research & Development",
+            "randd": "Research & Development",
+            "researchdevelopment": "Research & Development",
+            "researchanddevelopment": "Research & Development",
+            "market": "Market Definition",
+            "marketdefinition": "Market Definition"
+          };
+
+          const normalizeKey = (str: string) => {
+            return str
+              .toLowerCase()
+              .replace(/\b(and|&)\b/g, 'and')
+              .replace(/[^a-z0-9]/g, '')
+              .trim();
+          };
+
+          const getValueHtml = ($: cheerio.CheerioAPI, $el: cheerio.Cheerio): string => {
+            const contents = $el.contents();
+            let valueHtml = '';
+            let foundColon = false;
+            
+            contents.each((_, node) => {
+              if (foundColon) {
+                valueHtml += $.html(node);
+                return;
+              }
+              
+              const text = $(node).text();
+              const colonIdx = text.indexOf(':');
+              if (colonIdx !== -1) {
+                foundColon = true;
+                if (node.nodeType === 3) {
+                  valueHtml += text.substring(colonIdx + 1);
+                } else {
+                  const afterText = text.substring(colonIdx + 1).trim();
+                  if (afterText.length > 0) {
+                    const innerValueHtml = getValueHtml($, $(node));
+                    const tag = (node as any).tagName;
+                    const attribs = $(node).attr();
+                    let attribsStr = '';
+                    if (attribs) {
+                      attribsStr = Object.entries(attribs)
+                        .map(([key, val]) => ` ${key}="${val}"`)
+                        .join('');
+                    }
+                    valueHtml += `<${tag}${attribsStr}>${innerValueHtml}</${tag}>`;
+                  }
+                }
+              }
+            });
+            return valueHtml;
+          };
+
+          // Preprocess any paragraphs in Executive Summary starting with a bullet point character into list items
+          let currentUl: any = null;
+          $es('p, div').each((_, el) => {
+            const $el = $es(el);
+            const text = $el.text().trim();
+            const colonIdx = text.indexOf(':');
+            
+            if (/^[•●▪◦\-\u2022]/.test(text) && colonIdx > 0 && colonIdx < 60) {
+              const beforeText = text.substring(0, colonIdx).replace(/^[•●▪◦\-\u2022]\s*/, '').trim();
+              const normKey = normalizeKey(beforeText);
+              
+              let canonicalTitle = beforeText;
+              if (NORM_EXEC_TITLE_MAP[normKey]) {
+                canonicalTitle = NORM_EXEC_TITLE_MAP[normKey];
+              }
+              
+              const valueHtml = getValueHtml($es, $el);
+              const liHtml = `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${canonicalTitle}:</strong> ${valueHtml.trim()}</li>`;
+              const $li = $es(liHtml);
+              
+              if (!currentUl) {
+                currentUl = $es('<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;"></ul>');
+                $el.before(currentUl);
+              }
+              currentUl.append($li);
+              $el.remove();
+            } else {
+              // It's not a bullet point, break the current <ul> grouping
+              currentUl = null;
+            }
+          });
+
+          // Run the mapping on all standard and newly generated <li> elements
+          $es('li').each((_, liEl) => {
+            const $li = $es(liEl);
+            const text = $li.text().trim();
+            const colonIndex = text.indexOf(':');
+            
+            if (colonIndex > 0 && colonIndex < 60) {
+              const beforeText = text.substring(0, colonIndex).trim();
+              const normKey = normalizeKey(beforeText);
+              
+              if (NORM_EXEC_TITLE_MAP[normKey]) {
+                const canonicalTitle = NORM_EXEC_TITLE_MAP[normKey];
+                const valueHtml = getValueHtml($es, $li);
+                $li.html(`<strong>${canonicalTitle}:</strong> ${valueHtml.trim()}`);
+              }
+            }
+          });
+
+          // Merge consecutive <ul> tags again in case we created new ones
+          $es('ul + ul').each((_, ulEl) => {
+            const $ul = $es(ulEl);
+            const $prev = $ul.prev('ul');
+            if ($prev.length > 0) {
+              $prev.append($ul.contents());
+              $ul.remove();
+            }
+          });
+
           bodyHtml = $es.html();
         }
 

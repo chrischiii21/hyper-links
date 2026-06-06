@@ -28,6 +28,9 @@ const MATCH_PATTERNS = [
   "Market(?:\\s*Context)?"
 ];
 
+const prefixPattern = `(?:[o\\s\\u2013\\u2014\\u2022-]*)(?:(?:[A-Za-z0-9]+[.:\\s\\u2013\\u2014)-]+)*)?`;
+const titleRegex = new RegExp(`^${prefixPattern}(${MATCH_PATTERNS.join('|')})\\s*$`, 'i');
+
 const SUB_HEADERS = [
   "Company Overview",
   "Product Overview",
@@ -128,11 +131,38 @@ export const POST: APIRoute = async ({ request }) => {
       }
     });
 
+    // Helper to identify the section index of an element in the DOM
+    const getSectionIndexForElement = (el: any): number => {
+      let $parent = $(el);
+      while ($parent.length > 0 && $parent.parent().length > 0 && $parent.parent()[0].tagName !== 'body') {
+        $parent = $parent.parent();
+      }
+      if ($parent.length === 0) return -1;
+      
+      const parentEl = $parent[0];
+      let currentIdx = -1;
+      let found = false;
+      
+      $('body').children().each((_, child) => {
+        if (found) return;
+        if (child === parentEl) {
+          found = true;
+          return;
+        }
+        
+        const text = $(child).text().trim();
+        const match = titleRegex.exec(text);
+        if (match) {
+          const matchedTitle = match[1];
+          currentIdx = MATCH_PATTERNS.findIndex(pattern => new RegExp(`^${pattern}$`, 'i').test(matchedTitle));
+        }
+      });
+      
+      return currentIdx;
+    };
+
     // 1. Process Sub-Headers: Find target phrases and convert them to <h2> with font-weight normal
     const escapedSubHeaders = SUB_HEADERS.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-    
-    // Regex pattern to match optional bullets, dashes, Roman numerals, letters, numbers, and em/en dashes
-    const prefixPattern = `(?:[o\\s\\u2013\\u2014\\u2022-]*)(?:(?:[A-Za-z0-9]+[.:\\s\\u2013\\u2014)-]+)*)?`;
     
     // Match the sub-header text, ignoring complex prefixes. Optional colon/dash at the end.
     const subHeaderRegex = new RegExp(`^${prefixPattern}(${escapedSubHeaders})\\s*[:\\-\\u2013\\u2014]?\\s*(.*)$`, 'is');
@@ -141,6 +171,8 @@ export const POST: APIRoute = async ({ request }) => {
     const titleRegexHtml = new RegExp(`^(?:<[^>]+>|\\s)*${prefixPattern}(${escapedSubHeaders})(?:<[^>]+>|\\s)*[:\\-\\u2013\\u2014]?(?:<[^>]+>|\\s)*`, 'i');
 
     $('p, li, h1, h2, h3, h4, h5, h6, span, strong, b, em, i').each((_, el) => {
+      // Skip sub-header conversion for elements inside the Executive Summary (index 0)
+      if (getSectionIndexForElement(el) === 0) return;
       const $el = $(el);
       const text = $el.text().trim();
       
@@ -380,10 +412,6 @@ export const POST: APIRoute = async ({ request }) => {
 
     // MATCH_PATTERNS is defined at the top of the file
 
-    const matchPatternsStr = MATCH_PATTERNS.join('|');
-    // Match the main section titles with the same robust prefix pattern
-    const titleRegex = new RegExp(`^${prefixPattern}(${matchPatternsStr})\\s*$`, 'i');
-
     const extractedSections: { originalIndex: number; body: string }[] = [];
     
     let currentTargetIndex = -1;
@@ -584,6 +612,139 @@ export const POST: APIRoute = async ({ request }) => {
             $ul.remove();
           }
         });
+
+        // Rename and format first words before the colon in bullet points for Executive Summary
+        const NORM_EXEC_TITLE_MAP: Record<string, string> = {
+          "valueproposition": "Company Overview",
+          "companyoverview": "Company Overview",
+          "productoffering": "Product Overview",
+          "productoverview": "Product Overview",
+          "businessmodel": "Business Model",
+          "customerprofile": "Customer Overview",
+          "customeroverview": "Customer Overview",
+          "customerfeedback": "Customer Feedback & Testimonials",
+          "customerfeedbacktestimonials": "Customer Feedback & Testimonials",
+          "customerfeedbackandtestimonials": "Customer Feedback & Testimonials",
+          "competitivelandscape": "Competitive Landscape",
+          "leadership": "Leadership Team",
+          "leadershipteam": "Leadership Team",
+          "salesgtm": "Sales & Go-To-Market",
+          "salesandgtm": "Sales & Go-To-Market",
+          "salesgotomarket": "Sales & Go-To-Market",
+          "salesandgotomarket": "Sales & Go-To-Market",
+          "rd": "Research & Development",
+          "randd": "Research & Development",
+          "researchdevelopment": "Research & Development",
+          "researchanddevelopment": "Research & Development",
+          "market": "Market Definition",
+          "marketdefinition": "Market Definition"
+        };
+
+        const normalizeKey = (str: string) => {
+          return str
+            .toLowerCase()
+            .replace(/\b(and|&)\b/g, 'and')
+            .replace(/[^a-z0-9]/g, '')
+            .trim();
+        };
+
+        const getValueHtml = ($: cheerio.CheerioAPI, $el: cheerio.Cheerio): string => {
+          const contents = $el.contents();
+          let valueHtml = '';
+          let foundColon = false;
+          
+          contents.each((_, node) => {
+            if (foundColon) {
+              valueHtml += $.html(node);
+              return;
+            }
+            
+            const text = $(node).text();
+            const colonIdx = text.indexOf(':');
+            if (colonIdx !== -1) {
+              foundColon = true;
+              if (node.nodeType === 3) {
+                valueHtml += text.substring(colonIdx + 1);
+              } else {
+                const afterText = text.substring(colonIdx + 1).trim();
+                if (afterText.length > 0) {
+                  const innerValueHtml = getValueHtml($, $(node));
+                  const tag = (node as any).tagName;
+                  const attribs = $(node).attr();
+                  let attribsStr = '';
+                  if (attribs) {
+                    attribsStr = Object.entries(attribs)
+                      .map(([key, val]) => ` ${key}="${val}"`)
+                      .join('');
+                  }
+                  valueHtml += `<${tag}${attribsStr}>${innerValueHtml}</${tag}>`;
+                }
+              }
+            }
+          });
+          return valueHtml;
+        };
+
+        // Preprocess any paragraphs in Executive Summary starting with a bullet point character into list items
+        let currentUl: any = null;
+        $es('p, div').each((_, el) => {
+          const $el = $es(el);
+          const text = $el.text().trim();
+          const colonIdx = text.indexOf(':');
+          
+          if (/^[•●▪◦\-\u2022]/.test(text) && colonIdx > 0 && colonIdx < 60) {
+            const beforeText = text.substring(0, colonIdx).replace(/^[•●▪◦\-\u2022]\s*/, '').trim();
+            const normKey = normalizeKey(beforeText);
+            
+            let canonicalTitle = beforeText;
+            if (NORM_EXEC_TITLE_MAP[normKey]) {
+              canonicalTitle = NORM_EXEC_TITLE_MAP[normKey];
+            }
+            
+            const valueHtml = getValueHtml($es, $el);
+            const liHtml = `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${canonicalTitle}:</strong> ${valueHtml.trim()}</li>`;
+            const $li = $es(liHtml);
+            
+            if (!currentUl) {
+              currentUl = $es('<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;"></ul>');
+              $el.before(currentUl);
+            }
+            currentUl.append($li);
+            $el.remove();
+          } else {
+            // It's not a bullet point, break the current <ul> grouping
+            currentUl = null;
+          }
+        });
+
+        // Run the mapping on all standard and newly generated <li> elements
+        $es('li').each((_, liEl) => {
+          const $li = $es(liEl);
+          const text = $li.text().trim();
+          const colonIndex = text.indexOf(':');
+          
+          if (colonIndex > 0 && colonIndex < 60) {
+            const beforeText = text.substring(0, colonIndex).trim();
+            const normKey = normalizeKey(beforeText);
+            
+            if (NORM_EXEC_TITLE_MAP[normKey]) {
+              const canonicalTitle = NORM_EXEC_TITLE_MAP[normKey];
+              const valueHtml = getValueHtml($es, $li);
+              $li.html(`<strong>${canonicalTitle}:</strong> ${valueHtml.trim()}`);
+            }
+          }
+        });
+
+        // Merge consecutive <ul> tags again in case we created new ones
+        $es('ul + ul').each((_, ulEl) => {
+          const $ul = $es(ulEl);
+          const $prev = $ul.prev('ul');
+          if ($prev.length > 0) {
+            $prev.append($ul.contents());
+            $ul.remove();
+          }
+        });
+
         bodyHtml = $es.html();
       }
 
@@ -694,17 +855,19 @@ export const POST: APIRoute = async ({ request }) => {
         return extractLinks($el.text());
       };
 
-      $body('p, li, div').each((_, el) => {
-        const $el = $body(el);
-        const text = $el.text().trim();
-        const hasSourceMarker = /sources?\s*:/i.test(text);
-        const links = getLinksFromElement($el);
-        
-        if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
-          sectionSources.push(...links);
-          $el.remove();
-        }
-      });
+      if (index !== 0) {
+        $body('p, li, div').each((_, el) => {
+          const $el = $body(el);
+          const text = $el.text().trim();
+          const hasSourceMarker = /sources?\s*:/i.test(text);
+          const links = getLinksFromElement($el);
+          
+          if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
+            sectionSources.push(...links);
+            $el.remove();
+          }
+        });
+      }
 
       $body('h1, h2, h3, h4, h5, h6, p, li, strong, em, b').each((_, h2El) => {
         const $h2 = $body(h2El);
