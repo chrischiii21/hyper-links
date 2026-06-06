@@ -452,3 +452,59 @@ export function generateSourceListHtml(text: string): string {
   html += '</ul>';
   return html;
 }
+
+/**
+ * Checks if a block of text containing links is a pure source citation block (e.g. "Source: URL" or "Publisher - URL").
+ * If it contains substantive narrative text/sentence structure, it is NOT considered a pure source block.
+ */
+export function isPureSourceBlock(text: string, links: LinkData[]): boolean {
+  if (!links || links.length === 0) return false;
+
+  // Clean the text to remove all URLs
+  let textWithoutUrls = text;
+  links.forEach(link => {
+    // Escape URL for regex replacement
+    const escapedUrl = link.url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    textWithoutUrls = textWithoutUrls.replace(new RegExp(escapedUrl, 'gi'), '');
+    
+    // Also remove any naked version of the URL just in case
+    const nakedUrl = link.url.replace(/^https?:\/\//i, '').replace(/^www\./i, '');
+    if (nakedUrl.length > 4) {
+      const escapedNaked = nakedUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      textWithoutUrls = textWithoutUrls.replace(new RegExp(escapedNaked, 'gi'), '');
+    }
+  });
+
+  // Clean up any empty parentheses or brackets left behind by URL removal (e.g. "(Source: )", "()", "[ ]")
+  // Clean up leading/trailing spaces, punctuation, list/bullet markers
+  const cleaned = textWithoutUrls
+    .replace(/\(\s*(?:sources?|references?|ref|url|link)?\s*[:\d,\s]*\)/gi, '')
+    .replace(/\[\s*(?:sources?|references?|ref|url|link)?\s*[:\d,\s]*\]/gi, '')
+    .replace(/^[•●▪◦\-\*\s\d\.\(\)\[\]\:\,\;\u2013\u2014]+/g, '')
+    .trim();
+
+  // If the remaining text is completely empty, it's definitely a pure source block (just a URL)
+  if (!cleaned) return true;
+
+  // Check if it starts with a source prefix
+  const startsWithSourcePrefix = /^(?:sources?|references?|ref|url|link|retrieved|accessed)\b/i.test(cleaned);
+  if (startsWithSourcePrefix) {
+    // If it starts with a source prefix, it is a source block unless it is extremely long
+    return cleaned.length < 150;
+  }
+
+  // If it doesn't start with a source prefix, check if it's a very short line consisting of few words
+  // Split by whitespace and filter out empty strings/punctuation
+  const words = cleaned
+    .split(/[\s\t\n]+/)
+    .map(w => w.replace(/[^a-zA-Z0-9'-]/g, ''))
+    .filter(Boolean);
+
+  // If there are 3 or fewer words (e.g., "ClimateAI", "Gartner Peer Insights", "Company Homepage"), it's likely just a publisher label/title next to a URL
+  if (words.length <= 3) {
+    return true;
+  }
+
+  return false;
+}
+

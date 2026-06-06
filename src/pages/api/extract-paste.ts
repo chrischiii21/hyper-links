@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { marked } from 'marked';
 import * as cheerio from 'cheerio';
-import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers, cleanPublisherText, type LinkData } from '../../lib/linkUtils';
+import { generateSourceListHtml, extractLinks, deduplicateAndEnhancePublishers, cleanPublisherText, isPureSourceBlock, type LinkData } from '../../lib/linkUtils';
 
 const TARGET_TITLES = [
   "Executive Summary",
@@ -421,16 +421,26 @@ export const POST: APIRoute = async ({ request }) => {
               // Clean up the linkText (strip leading/trailing bullets, etc.)
               let cleanPublisher = cleanPublisherText(linkText);
               
-              // Fallback to hostname if it's still a naked URL
+              // Fallback to hostname or extractLinks if it's still a naked URL, generic 'source', or too long (e.g. parsed a whole sentence)
               const isStillNaked = /^(?:https?:\/\/|www\.)[^\s]+$/i.test(cleanPublisher) || 
-                                   /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?$/i.test(cleanPublisher);
-              if (isStillNaked || !cleanPublisher) {
-                try {
-                  const urlObj = new URL(href.startsWith('http') ? href : 'https://' + href);
-                  cleanPublisher = urlObj.hostname.replace(/^www\./, '');
-                  cleanPublisher = cleanPublisher.charAt(0).toUpperCase() + cleanPublisher.slice(1);
-                } catch (e) {
-                  cleanPublisher = 'Source';
+                                   /^[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?$/i.test(cleanPublisher) ||
+                                   !cleanPublisher ||
+                                   cleanPublisher.toLowerCase() === 'source' ||
+                                   cleanPublisher.length > 60;
+              
+              if (isStillNaked) {
+                const extracted = extractLinks(parentText);
+                const matched = extracted.find(l => l.url === href || l.url.replace(/^https?:\/\//i, '') === href.replace(/^https?:\/\//i, ''));
+                if (matched && matched.publisher && matched.publisher.toLowerCase() !== 'source') {
+                  cleanPublisher = matched.publisher;
+                } else {
+                  try {
+                    const urlObj = new URL(href.startsWith('http') ? href : 'https://' + href);
+                    cleanPublisher = urlObj.hostname.replace(/^www\./, '');
+                    cleanPublisher = cleanPublisher.charAt(0).toUpperCase() + cleanPublisher.slice(1);
+                  } catch (e) {
+                    cleanPublisher = 'Source';
+                  }
                 }
               }
 
@@ -449,16 +459,13 @@ export const POST: APIRoute = async ({ request }) => {
           $('p, li, div').each((_, el) => {
             const $el = $(el);
             const text = $el.text().trim();
-            
-            // Check if it's a source citation (usually starts with (Source: or contains Source:)
-            // Also handle cases where it's just a raw link list
-            const hasSourceMarker = /sources?\s*:/i.test(text);
             const links = getLinksFromElement($el);
             
-            if (links.length > 0 && (hasSourceMarker || text.length < 300)) {
-              // It's likely a source citation
+            if (links.length > 0) {
               sectionSources.push(...links);
-              $el.remove();
+              if (isPureSourceBlock(text, links)) {
+                $el.remove();
+              }
             }
           });
         }
