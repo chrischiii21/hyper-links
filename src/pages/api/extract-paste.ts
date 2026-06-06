@@ -455,20 +455,18 @@ export const POST: APIRoute = async ({ request }) => {
         };
         
         // 1. Identify and remove scattered sources
-        if (index !== 0) {
-          $('p, li, div').each((_, el) => {
-            const $el = $(el);
-            const text = $el.text().trim();
-            const links = getLinksFromElement($el);
-            
-            if (links.length > 0) {
-              sectionSources.push(...links);
-              if (isPureSourceBlock(text, links)) {
-                $el.remove();
-              }
+        $('p, li, div').each((_, el) => {
+          const $el = $(el);
+          const text = $el.text().trim();
+          const links = getLinksFromElement($el);
+          
+          if (links.length > 0) {
+            sectionSources.push(...links);
+            if (isPureSourceBlock(text, links)) {
+              $el.remove();
             }
-          });
-        }
+          }
+        });
 
         // 2. Identify and remove existing "Sources" headers and their consecutive content
         $('h1, h2, h3, h4, h5, h6, p, li, strong, em, b').each((_, h2El) => {
@@ -675,6 +673,19 @@ export const POST: APIRoute = async ({ request }) => {
             "marketdefinition": "Market Definition"
           };
 
+          const STANDARD_EXEC_TITLES = [
+            "Company Overview",
+            "Product Overview",
+            "Business Model",
+            "Customer Overview",
+            "Customer Feedback & Testimonials",
+            "Competitive Landscape",
+            "Leadership Team",
+            "Sales & Go-To-Market",
+            "Research & Development",
+            "Market Definition"
+          ];
+
           const normalizeKey = (str: string) => {
             return str
               .toLowerCase()
@@ -725,21 +736,31 @@ export const POST: APIRoute = async ({ request }) => {
           $es('p, div').each((_, el) => {
             const $el = $es(el);
             const text = $el.text().trim();
-            const colonIdx = text.indexOf(':');
             
-            if (/^[•●▪◦\-\u2022]/.test(text) && colonIdx > 0 && colonIdx < 60) {
-              const beforeText = text.substring(0, colonIdx).replace(/^[•●▪◦\-\u2022]\s*/, '').trim();
-              const normKey = normalizeKey(beforeText);
+            if (/^[•●▪◦\-\u2022]/.test(text)) {
+              const colonIdx = text.indexOf(':');
+              let canonicalTitle = '';
+              let valueHtml = '';
               
-              let canonicalTitle = beforeText;
-              if (NORM_EXEC_TITLE_MAP[normKey]) {
-                canonicalTitle = NORM_EXEC_TITLE_MAP[normKey];
+              if (colonIdx > 0 && colonIdx < 60) {
+                const beforeText = text.substring(0, colonIdx).replace(/^[•●▪◦\-\u2022]\s*/, '').trim();
+                const normKey = normalizeKey(beforeText);
+                if (NORM_EXEC_TITLE_MAP[normKey]) {
+                  canonicalTitle = NORM_EXEC_TITLE_MAP[normKey];
+                } else {
+                  canonicalTitle = beforeText;
+                }
+                valueHtml = getValueHtml($es, $el);
+              } else {
+                let rawHtml = $el.html() || '';
+                valueHtml = rawHtml.replace(/^(?:<[^>]+>)*\s*[•●▪◦\-\u2022]\s*/, '').trim();
               }
               
-              const valueHtml = getValueHtml($es, $el);
-              const liHtml = `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${canonicalTitle}:</strong> ${valueHtml.trim()}</li>`;
-              const $li = $es(liHtml);
+              const liHtml = canonicalTitle 
+                ? `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${canonicalTitle}:</strong> ${valueHtml.trim()}</li>`
+                : `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${valueHtml.trim()}</li>`;
               
+              const $li = $es(liHtml);
               if (!currentUl) {
                 currentUl = $es('<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;"></ul>');
                 $el.before(currentUl);
@@ -747,26 +768,89 @@ export const POST: APIRoute = async ({ request }) => {
               currentUl.append($li);
               $el.remove();
             } else {
-              // It's not a bullet point, break the current <ul> grouping
               currentUl = null;
             }
           });
 
-          // Run the mapping on all standard and newly generated <li> elements
+          // Run the mapping on all standard and newly generated <li> elements to parse and uniformize headers
+          const parsedLis: {
+            $li: cheerio.Cheerio;
+            hasTitle: boolean;
+            title: string;
+            contentHtml: string;
+          }[] = [];
+
           $es('li').each((_, liEl) => {
             const $li = $es(liEl);
             const text = $li.text().trim();
-            const colonIndex = text.indexOf(':');
-            
-            if (colonIndex > 0 && colonIndex < 60) {
-              const beforeText = text.substring(0, colonIndex).trim();
+            const html = $li.html() || '';
+            const colonIdx = text.indexOf(':');
+
+            let hasTitle = false;
+            let title = '';
+            let contentHtml = '';
+
+            if (colonIdx > 0 && colonIdx < 60) {
+              const beforeText = text.substring(0, colonIdx).trim();
               const normKey = normalizeKey(beforeText);
               
               if (NORM_EXEC_TITLE_MAP[normKey]) {
-                const canonicalTitle = NORM_EXEC_TITLE_MAP[normKey];
-                const valueHtml = getValueHtml($es, $li);
-                $li.html(`<strong>${canonicalTitle}:</strong> ${valueHtml.trim()}`);
+                hasTitle = true;
+                title = NORM_EXEC_TITLE_MAP[normKey];
+                contentHtml = getValueHtml($es, $li).trim();
+              } else {
+                const canonical = STANDARD_EXEC_TITLES.find(t => normalizeKey(t) === normKey);
+                if (canonical) {
+                  hasTitle = true;
+                  title = canonical;
+                  contentHtml = getValueHtml($es, $li).trim();
+                } else {
+                  hasTitle = false;
+                  contentHtml = html.trim();
+                }
               }
+            } else {
+              hasTitle = false;
+              contentHtml = html.trim();
+            }
+
+            contentHtml = contentHtml.replace(/^[•●▪◦\-\u2022\s\t:]+/, '').trim();
+
+            parsedLis.push({
+              $li,
+              hasTitle,
+              title,
+              contentHtml
+            });
+          });
+
+          const usedTitles = new Set<string>();
+          parsedLis.forEach(item => {
+            if (item.hasTitle) {
+              usedTitles.add(item.title);
+            }
+          });
+
+          let titleIndex = 0;
+          parsedLis.forEach(item => {
+            if (!item.hasTitle) {
+              while (titleIndex < STANDARD_EXEC_TITLES.length && usedTitles.has(STANDARD_EXEC_TITLES[titleIndex])) {
+                titleIndex++;
+              }
+              if (titleIndex < STANDARD_EXEC_TITLES.length) {
+                item.title = STANDARD_EXEC_TITLES[titleIndex];
+                item.hasTitle = true;
+                usedTitles.add(item.title);
+                titleIndex++;
+              }
+            }
+          });
+
+          parsedLis.forEach(item => {
+            if (item.hasTitle) {
+              item.$li.html(`<strong>${item.title}:</strong> ${item.contentHtml}`);
+            } else {
+              item.$li.html(item.contentHtml);
             }
           });
 

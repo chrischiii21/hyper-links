@@ -195,6 +195,12 @@ const CITATION_WORDS = new Set([
   'website', 'websites', 'homepage', 'homepages', 'page', 'pages', 'blog', 'blogs', 'news', 'portal', 'portals'
 ]);
 
+const GENERIC_PUBLISHERS = new Set([
+  'website', 'websites', 'webpage', 'webpages', 'web page', 'web pages',
+  'link', 'links', 'source', 'sources', 'homepage', 'homepages', 'page', 'pages',
+  'url', 'urls', 'online', 'site', 'sites', 'company website', 'company websites'
+]);
+
 /**
  * Extracts links from text and identifies publishers
  */
@@ -207,8 +213,8 @@ export function extractLinks(text: string): LinkData[] {
   // Strip HTML tags to avoid matching URLs with trailing </strong> etc.
   cleanText = cleanText.replace(/<[^>]*>/g, ' ');
   
-  // Find all URLs in the text
-  const urlRegex = /(?:^|[^a-zA-Z0-9])((?:https?:\/\/|www\.)[^\s\)\*>]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so)\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?)/gi;
+  // Find all URLs in the text (including common TLDs like de, fr, uk, ca, tech, etc.)
+  const urlRegex = /(?:^|[^a-zA-Z0-9])((?:https?:\/\/|www\.)[^\s\)\*>]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so|uk|ca|de|fr|jp|au|br|in|ch|it|nl|se|no|es|mx|tv|app|dev|xyz|tech|online|store|co\.[a-z]{2})\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?)/gi;
   let match;
   let lastIndex = 0;
   
@@ -350,55 +356,60 @@ export function extractLinks(text: string): LinkData[] {
     let isBrandEquivalent = false;
     if (capitalizedBrand && publisher && publisher.toLowerCase() !== 'source') {
       const pubLower = publisher.toLowerCase();
-      const brandLower = capitalizedBrand.toLowerCase();
       
-      const pubNormalized = pubLower.replace(/[^a-z0-9]/g, '');
-      const brandNormalized = brandLower.replace(/[^a-z0-9]/g, '');
-      
-      if (pubNormalized === brandNormalized) {
-        finalPublisher = publisher;
+      if (GENERIC_PUBLISHERS.has(pubLower)) {
+        finalPublisher = capitalizedBrand;
         isBrandEquivalent = true;
       } else {
-        let description = '';
-        if (pubLower.startsWith(brandLower)) {
-          // e.g. "Jalios clients page" -> "clients page"
-          description = publisher.substring(capitalizedBrand.length).trim();
-        } else if (pubLower.endsWith(brandLower)) {
-          // e.g. "clients page Jalios" -> "clients page"
-          description = publisher.substring(0, publisher.length - capitalizedBrand.length).trim();
-        } else {
-          // E.g. "clients page" -> description is "clients page", brand is "Jalios"
-          const isGenericDesc = /^(clients|homepage|sectors|solutions|website|about|features|pricing|blog|news|documentation|docs)/i.test(pubLower);
-          if (isGenericDesc) {
-            description = publisher;
-          }
-        }
-
-        // Clean up description prefix/suffix punctuation
-        description = description
-          .replace(/^[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
-          .replace(/[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
-          .trim();
-
-        const isTldOnly = /^\.[a-z]{2,10}$/i.test(description);
-
-        if (description && !isTldOnly) {
-          // Standardize common descriptions
-          let cleanDesc = description;
-          if (/^homepage$/i.test(cleanDesc)) {
-            cleanDesc = 'Homepage';
-          } else if (/^clients\s*page$/i.test(cleanDesc) || /^clients$/i.test(cleanDesc)) {
-            cleanDesc = 'Clients';
-          } else if (/^sectors\s*pages?$/i.test(cleanDesc) || /^sectors$/i.test(cleanDesc) || /^solutions\/secteurs$/i.test(cleanDesc) || /^secteurs$/i.test(cleanDesc)) {
-            cleanDesc = 'Sectors';
-          } else {
-            // Capitalize description words
-            cleanDesc = cleanDesc.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-          }
-          finalPublisher = `${capitalizedBrand} - ${cleanDesc}`;
-        } else {
-          finalPublisher = isTldOnly ? publisher : capitalizedBrand;
+        const brandLower = capitalizedBrand.toLowerCase();
+        const pubNormalized = pubLower.replace(/[^a-z0-9]/g, '');
+        const brandNormalized = brandLower.replace(/[^a-z0-9]/g, '');
+        
+        if (pubNormalized === brandNormalized) {
+          finalPublisher = publisher;
           isBrandEquivalent = true;
+        } else {
+          let description = '';
+          if (pubLower.startsWith(brandLower)) {
+            // e.g. "Jalios clients page" -> "clients page"
+            description = publisher.substring(capitalizedBrand.length).trim();
+          } else if (pubLower.endsWith(brandLower)) {
+            // e.g. "clients page Jalios" -> "clients page"
+            description = publisher.substring(0, publisher.length - capitalizedBrand.length).trim();
+          } else {
+            // E.g. "clients page" -> description is "clients page", brand is "Jalios"
+            const isGenericDesc = /^(clients|homepage|sectors|solutions|website|about|features|pricing|blog|news|documentation|docs)/i.test(pubLower);
+            if (isGenericDesc) {
+              description = publisher;
+            }
+          }
+
+          // Clean up description prefix/suffix punctuation
+          description = description
+            .replace(/^[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+/, '') 
+            .replace(/[,\-\(\)\s\t\n;:*|\\\/\u2013\u2014\u2022\u00b7\u2219\u25cf\u2043\u2023]+$/, '') 
+            .trim();
+
+          const isTldOnly = /^\.[a-z]{2,10}$/i.test(description);
+
+          if (description && !isTldOnly) {
+            // Standardize common descriptions
+            let cleanDesc = description;
+            if (/^homepage$/i.test(cleanDesc)) {
+              cleanDesc = 'Homepage';
+            } else if (/^clients\s*page$/i.test(cleanDesc) || /^clients$/i.test(cleanDesc)) {
+              cleanDesc = 'Clients';
+            } else if (/^sectors\s*pages?$/i.test(cleanDesc) || /^sectors$/i.test(cleanDesc) || /^solutions\/secteurs$/i.test(cleanDesc) || /^secteurs$/i.test(cleanDesc)) {
+              cleanDesc = 'Sectors';
+            } else {
+              // Capitalize description words
+              cleanDesc = cleanDesc.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+            }
+            finalPublisher = `${capitalizedBrand} - ${cleanDesc}`;
+          } else {
+            finalPublisher = isTldOnly ? publisher : capitalizedBrand;
+            isBrandEquivalent = true;
+          }
         }
       }
     } else if (capitalizedBrand) {
