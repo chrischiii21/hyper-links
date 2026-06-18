@@ -212,13 +212,107 @@ export function extractLinks(text: string): LinkData[] {
   
   // Strip HTML tags to avoid matching URLs with trailing </strong> etc.
   cleanText = cleanText.replace(/<[^>]*>/g, ' ');
-  
-  // Find all URLs in the text (including common TLDs like de, fr, uk, ca, tech, etc.)
-  const urlRegex = /(?:^|[^a-zA-Z0-9])((?:https?:\/\/|www\.)[^\s\)\*>]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so|uk|ca|de|fr|jp|au|br|in|ch|it|nl|se|no|es|mx|tv|app|dev|xyz|tech|online|store|co\.[a-z]{2})\b(?:\/[^\s\)\*>]*[^\s\)\*>\.,])?)/gi;
+
+  // Split text into lines/segments by semicolon, vertical bar, or newline
+  const segments = cleanText.split(/[;\n|]+/);
+  const remainingSegments: string[] = [];
+
+  function isUrl(str: string): boolean {
+    const trimmed = str.trim();
+    if (/^(?:https?:\/\/|www\.)/i.test(trimmed)) return true;
+    const domainPattern = /^[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so|uk|ca|de|fr|jp|au|br|in|ch|it|nl|se|no|es|mx|tv|app|dev|xyz|tech|online|store|co\.[a-z]{2})\b(?:\/[^\s]*)?$/i;
+    return domainPattern.test(trimmed);
+  }
+
+  // Regex to match a segment ending with a parenthesis block
+  const segmentRegex = /^\s*(.*?)\s*\(([^)]+)\)[.\s]*$/;
+
+  for (const segment of segments) {
+    if (!segment.trim()) continue;
+
+    const match = segmentRegex.exec(segment);
+    if (match) {
+      const publisherRaw = match[1].trim();
+      const insideRaw = match[2].trim();
+      
+      const items = insideRaw.split(',').map(item => item.trim()).filter(Boolean);
+      const urls: string[] = [];
+      let year = '';
+
+      for (const item of items) {
+        if (isUrl(item)) {
+          urls.push(item);
+        } else if (/^\d{4}$/.test(item)) {
+          year = item;
+        }
+      }
+
+      if (urls.length > 0) {
+        // We successfully parsed this segment as a parenthesized source group!
+        const cleanedPublisher = cleanPublisherText(publisherRaw);
+
+        for (const url of urls) {
+          let finalUrl = url;
+          if (!url.toLowerCase().startsWith('http') && !url.toLowerCase().startsWith('www.')) {
+            finalUrl = 'https://' + url;
+          } else if (url.toLowerCase().startsWith('www.')) {
+            finalUrl = 'https://' + url;
+          }
+
+          let finalPublisher = cleanedPublisher;
+          let brand = '';
+          try {
+            const urlObj = new URL(finalUrl);
+            const hostname = urlObj.hostname.replace(/^www\./i, '');
+            const domainParts = hostname.split('.');
+            if (domainParts.length >= 2) {
+              const secondToLast = domainParts[domainParts.length - 2].toLowerCase();
+              const isCommonTld = ['co', 'com', 'org', 'net', 'gov', 'edu', 'ltd'].includes(secondToLast);
+              if (isCommonTld && domainParts.length >= 3) {
+                brand = domainParts[domainParts.length - 3];
+              } else {
+                brand = domainParts[domainParts.length - 2];
+              }
+            } else {
+              brand = domainParts[0] || '';
+            }
+          } catch (e) {}
+
+          let capitalizedBrand = '';
+          if (brand) {
+            if (brand.toLowerCase() === 'blend360') {
+              capitalizedBrand = 'Blend360';
+            } else if (brand.toLowerCase() === 'jalios') {
+              capitalizedBrand = 'Jalios';
+            } else {
+              capitalizedBrand = brand.charAt(0).toUpperCase() + brand.slice(1);
+            }
+          }
+
+          const isGeneric = !finalPublisher || 
+                            finalPublisher.length < 2 || 
+                            /^(source|sources|reference|references|url|urls|link|links|website|websites|homepage|homepages|page|pages)$/i.test(finalPublisher);
+
+          if (isGeneric) {
+            finalPublisher = capitalizedBrand || 'Source';
+          }
+
+          results.push({ publisher: finalPublisher, url: finalUrl, year });
+        }
+        continue;
+      }
+    }
+
+    remainingSegments.push(segment);
+  }
+
+  // Fallback: process remaining segments
+  const remainingText = remainingSegments.join(' ');
+  const urlRegex = /(?:^|[^a-zA-Z0-9])((?:https?:\/\/|www\.)[^\s\)\*>]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so|uk|ca|de|fr|jp|au|br|in|ch|it|nl|se|no|es|mx|tv|app|dev|xyz|tech|online|store|co\.[a-z]{2})\b(?:\/[^\s\)\*>]*[^\s\dots\)\*>\.,])?)/gi;
   let match;
   let lastIndex = 0;
   
-  while ((match = urlRegex.exec(cleanText)) !== null) {
+  while ((match = urlRegex.exec(remainingText)) !== null) {
     const url = match[1]?.trim();
     if (!url) continue;
 
@@ -228,8 +322,8 @@ export function extractLinks(text: string): LinkData[] {
     // Check if it's a naked domain (no http/https or www.)
     const isNakedDomain = !/^(?:https?:\/\/|www\.)/i.test(url);
     if (isNakedDomain) {
-      const beforeText = cleanText.substring(0, matchIndex);
-      const afterText = cleanText.substring(endIndex);
+      const beforeText = remainingText.substring(0, matchIndex);
+      const afterText = remainingText.substring(endIndex);
 
       const lastWordMatch = beforeText.match(/([a-zA-Z0-9'-]+)\s*$/);
       const firstWordMatch = afterText.match(/^\s*([a-zA-Z0-9'-]+)/);
@@ -246,7 +340,7 @@ export function extractLinks(text: string): LinkData[] {
       const isLastWordVerb = VERBS.has(lastWord);
       const isFirstWordVerb = VERBS.has(firstWord);
 
-      const containsVerbs = cleanText.split(/\s+/).some(w => VERBS.has(w.toLowerCase().replace(/[^a-z]/g, '')));
+      const containsVerbs = remainingText.split(/\s+/).some(w => VERBS.has(w.toLowerCase().replace(/[^a-z]/g, '')));
       const hasExplicitSourcePrefix = /sources?\s*[:\-–—\s]/i.test(beforeText) || /\bsources?\b/i.test(beforeText);
 
       if ((isLastWordSentence || isFirstWordSentence || isLastWordVerb || isFirstWordVerb || containsVerbs) && !hasExplicitSourcePrefix) {
@@ -255,7 +349,7 @@ export function extractLinks(text: string): LinkData[] {
     }
 
     // Text between the last URL (or start) and this URL
-    let beforeUrl = cleanText.substring(lastIndex, matchIndex).trim();
+    let beforeUrl = remainingText.substring(lastIndex, matchIndex).trim();
     if (beforeUrl.includes('\n')) {
       const lines = beforeUrl.split('\n');
       beforeUrl = lines[lines.length - 1].trim();
@@ -417,7 +511,26 @@ export function extractLinks(text: string): LinkData[] {
       isBrandEquivalent = true;
     }
 
-
+    if (isBrandEquivalent && capitalizedBrand) {
+      try {
+        const urlObj = new URL(finalUrl);
+        const pathname = urlObj.pathname.replace(/\/$/, '').toLowerCase();
+        
+        if (urlObj.hostname.replace(/^www\./i, '') === 'jalios.com') {
+          if (pathname === '/fr' || pathname === '/fr/' || pathname === '') {
+            finalPublisher = 'Jalios - Homepage';
+          } else if (pathname === '/fr/clients') {
+            finalPublisher = 'Jalios - Clients';
+          } else if (pathname === '/fr/solutions/secteurs') {
+            finalPublisher = 'Jalios - Sectors';
+          } else {
+            finalPublisher = appendUrlTitleToPublisher(finalPublisher, finalUrl);
+          }
+        } else {
+          finalPublisher = appendUrlTitleToPublisher(finalPublisher, finalUrl);
+        }
+      } catch (e) {}
+    }
 
     if (!finalPublisher || finalPublisher.length < 2 || finalPublisher.toLowerCase() === 'source') {
         try {
@@ -431,11 +544,11 @@ export function extractLinks(text: string): LinkData[] {
     
     // SPECIAL CASE: If the "URL" we found is actually a naked domain that was immediately followed by a comma, 
     // it was likely the publisher name. We skip it if there's a better URL coming up.
-    const remainingText = cleanText.substring(urlRegex.lastIndex);
-    if (isNakedDomain && remainingText.trim().startsWith(',')) {
+    const remainingTextLookahead = remainingText.substring(urlRegex.lastIndex);
+    if (isNakedDomain && remainingTextLookahead.trim().startsWith(',')) {
       // Look ahead for a real URL in the same citation block
-      const nextCitationEnd = remainingText.indexOf(')');
-      const nextFullUrl = remainingText.substring(0, nextCitationEnd > 0 ? nextCitationEnd : 50).match(/https?:\/\/[^\s\)]+/);
+      const nextCitationEnd = remainingTextLookahead.indexOf(')');
+      const nextFullUrl = remainingTextLookahead.substring(0, nextCitationEnd > 0 ? nextCitationEnd : 50).match(/https?:\/\/[^\s\)]+/);
       if (nextFullUrl) {
         // Skip this naked domain match, it's just the publisher name
         continue;
@@ -458,7 +571,8 @@ export function generateSourceListHtml(text: string): string {
 
   let html = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
   links.forEach(link => {
-    html += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
+    const yearPart = link.year ? `, ${link.year}` : '';
+    html += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}${yearPart}</a></li>`;
   });
   html += '</ul>';
   return html;
