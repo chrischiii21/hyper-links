@@ -213,8 +213,15 @@ export function extractLinks(text: string): LinkData[] {
   // Strip HTML tags to avoid matching URLs with trailing </strong> etc.
   cleanText = cleanText.replace(/<[^>]*>/g, ' ');
 
-  // Split text into lines/segments by semicolon, vertical bar, or newline
-  const segments = cleanText.split(/[;\n|]+/);
+  // Split text into lines/segments by semicolon, vertical bar, newline, or adjacent parenthesized blocks
+  const initialSegments = cleanText.split(/[;\n|]+/);
+  const splitRegex = /(?<=\))\s*[,;]?\s*(?=\()/;
+  const segments: string[] = [];
+  for (const seg of initialSegments) {
+    if (seg.trim()) {
+      segments.push(...seg.split(splitRegex));
+    }
+  }
   const remainingSegments: string[] = [];
 
   function isUrl(str: string): boolean {
@@ -249,7 +256,18 @@ export function extractLinks(text: string): LinkData[] {
 
       if (urls.length > 0) {
         // We successfully parsed this segment as a parenthesized source group!
-        const cleanedPublisher = cleanPublisherText(publisherRaw);
+        let cleanedPublisher = cleanPublisherText(publisherRaw);
+
+        // Try to get a publisher from non-url, non-year items inside parenthesis
+        if (!cleanedPublisher || cleanedPublisher.length < 2 || /^(source|sources|reference|references|url|urls|link|links|website|websites|homepage|homepages|page|pages)$/i.test(cleanedPublisher)) {
+          const nonUrlNonYearItems = items.filter(item => !isUrl(item) && !/^\d{4}$/.test(item));
+          if (nonUrlNonYearItems.length > 0) {
+            const candidate = cleanPublisherText(nonUrlNonYearItems[0]);
+            if (candidate && candidate.length >= 2 && !/^(source|sources|reference|references|url|urls|link|links|website|websites|homepage|homepages|page|pages)$/i.test(candidate)) {
+              cleanedPublisher = candidate;
+            }
+          }
+        }
 
         for (const url of urls) {
           let finalUrl = url;
