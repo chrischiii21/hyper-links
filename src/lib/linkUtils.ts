@@ -215,7 +215,7 @@ export function extractLinks(text: string): LinkData[] {
 
   // Split text into lines/segments by semicolon, vertical bar, newline, or adjacent parenthesized blocks
   const initialSegments = cleanText.split(/[;\n|]+/);
-  const splitRegex = /(?<=\))\s*[,;·\u00b7•●▪◦\-\u2013\u2014\u2219\u25cf\u2043\u2023./|\\*]*\s*(?=\()/;
+  const splitRegex = /(?<=\))\s*[,;·\u00b7•●▪◦\-\u2013\u2014\u2219\u25cf\u2043\u2023./|\\*]*\s*(?=[^)]*\()/;
   const segments: string[] = [];
   for (const seg of initialSegments) {
     if (seg.trim()) {
