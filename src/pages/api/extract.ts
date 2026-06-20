@@ -996,8 +996,7 @@ export const POST: APIRoute = async ({ request }) => {
         const sourcesH2 = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${label}</span></h2>`;
         let listHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
         sectionSources.forEach(link => {
-          const yearPart = link.year ? `, ${link.year}` : '';
-          listHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}${yearPart}</a></li>`;
+          listHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
         });
         listHtml += '</ul>';
         $body.root().append(sourcesH2);

@@ -95,8 +95,7 @@ export default function RichTextCopier() {
       
       processedLinks.forEach(link => {
         const linkText = link.publisher || 'Source';
-        const yearPart = link.year ? `, ${link.year}` : '';
-        html += `<li><a href="${link.url}">${linkText}${yearPart}</a></li>`;
+        html += `<li><a href="${link.url}">${linkText}</a></li>`;
       });
       html += '</ul></div>';
       

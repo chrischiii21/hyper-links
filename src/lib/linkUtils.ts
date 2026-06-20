@@ -589,8 +589,7 @@ export function generateSourceListHtml(text: string): string {
 
   let html = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
   links.forEach(link => {
-    const yearPart = link.year ? `, ${link.year}` : '';
-    html += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}${yearPart}</a></li>`;
+    html += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
   });
   html += '</ul>';
   return html;
