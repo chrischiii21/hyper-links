@@ -201,6 +201,145 @@ const GENERIC_PUBLISHERS = new Set([
   'url', 'urls', 'online', 'site', 'sites', 'company website', 'company websites'
 ]);
 
+function isUrl(str: string): boolean {
+  const trimmed = str.trim();
+  if (/^(?:https?:\/\/|www\.)/i.test(trimmed)) return true;
+  const domainPattern = /^[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so|uk|ca|de|fr|jp|au|br|in|ch|it|nl|se|no|es|mx|tv|app|dev|xyz|tech|online|store|co\.[a-z]{2})\b(?:\/[^\s]*)?$/i;
+  return domainPattern.test(trimmed);
+}
+
+function resolveDomain(publisher: string, allDomainsInText: string[] = []): string {
+  const cleanPub = publisher.replace(/^[•●▪◦\-\*\s\d\.\(\)\[\]\:\,\;\u2013\u2014]+/, '').trim().toLowerCase();
+  
+  // Predefined dictionary mapping common publishers to domains
+  const COMMON_PUBLISHER_DOMAINS: Record<string, string> = {
+    'tracxn': 'tracxn.com',
+    'finovate': 'finovate.com',
+    'businesswire': 'businesswire.com',
+    'business wire': 'businesswire.com',
+    'pr newswire': 'prnewswire.com',
+    'prnewswire': 'prnewswire.com',
+    'fintech futures': 'fintechfutures.com',
+    'fintechfutures': 'fintechfutures.com',
+    'financial it': 'financialit.net',
+    'financialit': 'financialit.net',
+    'smartkyc': 'smartkyc.com',
+    'smartkyc.com': 'smartkyc.com',
+    'private banker international': 'privatebankerinternational.com',
+    'privatebankerinternational': 'privatebankerinternational.com',
+    'ffnews': 'ffnews.com',
+    'ffnews.com': 'ffnews.com',
+    'finantix': 'finantix.com',
+    'finantix website': 'finantix.com',
+    'jalios': 'jalios.com'
+  };
+
+  if (COMMON_PUBLISHER_DOMAINS[cleanPub]) {
+    return COMMON_PUBLISHER_DOMAINS[cleanPub];
+  }
+
+  // Check if cleanPub itself is a domain
+  if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,10}(?:\.[a-zA-Z]{2,10})?$/.test(cleanPub)) {
+    return cleanPub;
+  }
+
+  // Scan all domains in the text for a match
+  const normPub = cleanPub.replace(/[^a-z0-9]/g, '');
+  for (const domain of allDomainsInText) {
+    const normDomain = domain.replace(/^www\./i, '').split('.')[0].replace(/[^a-z0-9]/g, '');
+    if (normPub.includes(normDomain) || normDomain.includes(normPub)) {
+      return domain.replace(/^(https?:\/\/)?(www\.)?/i, '');
+    }
+  }
+
+  // Fallback: normalized + ".com"
+  const safeName = cleanPub.replace(/[^a-z0-9-]/g, '');
+  return safeName ? `${safeName}.com` : 'domain.com';
+}
+
+function getCanonicalPublisherName(publisher: string, urlStr: string): string {
+  const lower = publisher.trim().toLowerCase();
+  
+  // If it's already a domain name format, keep it as is
+  if (/^[a-zA-Z0-9-]+\.[a-zA-Z]{2,10}(?:\.[a-zA-Z]{2,10})?$/.test(lower)) {
+    return publisher.trim();
+  }
+
+  // Handle separators like "Brand - Title"
+  if (publisher.includes(' - ')) {
+    const parts = publisher.split(' - ');
+    const brandPart = parts[0].trim();
+    const rest = parts.slice(1).join(' - ');
+    const canonicalBrand = getCanonicalPublisherName(brandPart, urlStr);
+    return `${canonicalBrand} - ${rest}`;
+  }
+
+  const CANONICAL_PUBLISHERS: Record<string, string> = {
+    'tracxn': 'Tracxn',
+    'finovate': 'Finovate',
+    'businesswire': 'BusinessWire',
+    'business wire': 'BusinessWire',
+    'pr newswire': 'PR Newswire',
+    'prnewswire': 'PR Newswire',
+    'fintech futures': 'Fintech Futures',
+    'fintechfutures': 'Fintech Futures',
+    'financial it': 'Financial IT',
+    'financialit': 'Financial IT',
+    'smartkyc': 'smartkyc.com',
+    'smartkyc.com': 'smartkyc.com',
+    'financialit.net': 'financialit.net',
+    'private banker international': 'Private Banker International',
+    'privatebankerinternational': 'Private Banker International',
+    'ffnews': 'ffnews.com',
+    'ffnews.com': 'ffnews.com',
+    'finantix': 'Finantix',
+    'finantix website': 'Finantix website'
+  };
+
+  if (CANONICAL_PUBLISHERS[lower]) {
+    return CANONICAL_PUBLISHERS[lower];
+  }
+
+  const isGeneric = !publisher || 
+                    publisher.length < 2 || 
+                    /^(source|sources|reference|references|url|urls|link|links|website|websites|homepage|homepages|page|pages)$/i.test(publisher);
+  if (isGeneric && urlStr) {
+    try {
+      const urlObj = new URL(urlStr.startsWith('http') ? urlStr : 'https://' + urlStr);
+      const hostname = urlObj.hostname.replace(/^www\./i, '').toLowerCase();
+      
+      if (CANONICAL_PUBLISHERS[hostname]) {
+        return CANONICAL_PUBLISHERS[hostname];
+      }
+      
+      const domainParts = hostname.split('.');
+      let brand = '';
+      if (domainParts.length >= 2) {
+        const secondToLast = domainParts[domainParts.length - 2];
+        const isCommonTld = ['co', 'com', 'org', 'net', 'gov', 'edu', 'ltd'].includes(secondToLast);
+        if (isCommonTld && domainParts.length >= 3) {
+          brand = domainParts[domainParts.length - 3];
+        } else {
+          brand = domainParts[domainParts.length - 2];
+        }
+      } else {
+        brand = domainParts[0] || '';
+      }
+      
+      if (brand) {
+        if (brand.toLowerCase() === 'blend360') return 'Blend360';
+        if (brand.toLowerCase() === 'jalios') return 'Jalios';
+        if (CANONICAL_PUBLISHERS[brand.toLowerCase()]) {
+          return CANONICAL_PUBLISHERS[brand.toLowerCase()];
+        }
+        return brand.charAt(0).toUpperCase() + brand.slice(1);
+      }
+    } catch (e) {}
+  }
+
+  return publisher;
+}
+
 /**
  * Extracts links from text and identifies publishers
  */
@@ -213,6 +352,16 @@ export function extractLinks(text: string): LinkData[] {
   // Strip HTML tags to avoid matching URLs with trailing </strong> etc.
   cleanText = cleanText.replace(/<[^>]*>/g, ' ');
 
+  // Pre-extract all domain names from the text to help with dynamic domain mapping for slugs
+  const allDomainsInText: string[] = [];
+  const domainExtractionRegex = /(?:https?:\/\/|www\.)?([a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so|uk|ca|de|fr|jp|au|br|in|ch|it|nl|se|no|es|mx|tv|app|dev|xyz|tech|online|store|co\.[a-z]{2}))\b/gi;
+  let domainMatch;
+  while ((domainMatch = domainExtractionRegex.exec(cleanText)) !== null) {
+    if (domainMatch[1]) {
+      allDomainsInText.push(domainMatch[1].toLowerCase());
+    }
+  }
+
   // Split text into lines/segments by semicolon, vertical bar, newline, or adjacent parenthesized blocks
   const initialSegments = cleanText.split(/[;\n|]+/);
   const splitRegex = /(?<=\))\s*[,;·\u00b7•●▪◦\-\u2013\u2014\u2219\u25cf\u2043\u2023./|\\*]*\s*(?=[^)]*\()/;
@@ -223,13 +372,6 @@ export function extractLinks(text: string): LinkData[] {
     }
   }
   const remainingSegments: string[] = [];
-
-  function isUrl(str: string): boolean {
-    const trimmed = str.trim();
-    if (/^(?:https?:\/\/|www\.)/i.test(trimmed)) return true;
-    const domainPattern = /^[a-zA-Z0-9-]+\.(?:com|org|net|io|ai|gov|edu|co|biz|info|me|us|so|uk|ca|de|fr|jp|au|br|in|ch|it|nl|se|no|es|mx|tv|app|dev|xyz|tech|online|store|co\.[a-z]{2})\b(?:\/[^\s]*)?$/i;
-    return domainPattern.test(trimmed);
-  }
 
   // Regex to match a segment ending with a parenthesis block
   const segmentRegex = /^\s*(.*?)\s*\(([^)]+)\)[.\s]*$/;
@@ -244,6 +386,7 @@ export function extractLinks(text: string): LinkData[] {
       
       const items = insideRaw.split(',').map(item => item.trim()).filter(Boolean);
       const urls: string[] = [];
+      const slugs: string[] = [];
       let year = '';
 
       for (const item of items) {
@@ -251,23 +394,14 @@ export function extractLinks(text: string): LinkData[] {
           urls.push(item);
         } else if (/^\d{4}$/.test(item)) {
           year = item;
+        } else {
+          slugs.push(item);
         }
       }
 
       if (urls.length > 0) {
-        // We successfully parsed this segment as a parenthesized source group!
         let cleanedPublisher = cleanPublisherText(publisherRaw);
-
-        // Try to get a publisher from non-url, non-year items inside parenthesis
-        if (!cleanedPublisher || cleanedPublisher.length < 2 || /^(source|sources|reference|references|url|urls|link|links|website|websites|homepage|homepages|page|pages)$/i.test(cleanedPublisher)) {
-          const nonUrlNonYearItems = items.filter(item => !isUrl(item) && !/^\d{4}$/.test(item));
-          if (nonUrlNonYearItems.length > 0) {
-            const candidate = cleanPublisherText(nonUrlNonYearItems[0]);
-            if (candidate && candidate.length >= 2 && !/^(source|sources|reference|references|url|urls|link|links|website|websites|homepage|homepages|page|pages)$/i.test(candidate)) {
-              cleanedPublisher = candidate;
-            }
-          }
-        }
+        cleanedPublisher = getCanonicalPublisherName(cleanedPublisher, urls[0]);
 
         for (const url of urls) {
           let finalUrl = url;
@@ -277,44 +411,19 @@ export function extractLinks(text: string): LinkData[] {
             finalUrl = 'https://' + url;
           }
 
-          let finalPublisher = cleanedPublisher;
-          let brand = '';
-          try {
-            const urlObj = new URL(finalUrl);
-            const hostname = urlObj.hostname.replace(/^www\./i, '');
-            const domainParts = hostname.split('.');
-            if (domainParts.length >= 2) {
-              const secondToLast = domainParts[domainParts.length - 2].toLowerCase();
-              const isCommonTld = ['co', 'com', 'org', 'net', 'gov', 'edu', 'ltd'].includes(secondToLast);
-              if (isCommonTld && domainParts.length >= 3) {
-                brand = domainParts[domainParts.length - 3];
-              } else {
-                brand = domainParts[domainParts.length - 2];
-              }
-            } else {
-              brand = domainParts[0] || '';
-            }
-          } catch (e) {}
+          results.push({ publisher: cleanedPublisher, url: finalUrl, year });
+        }
+        continue;
+      } else if (slugs.length > 0 && publisherRaw) {
+        const cleanedPublisher = cleanPublisherText(publisherRaw);
+        const resolvedDomain = resolveDomain(cleanedPublisher, allDomainsInText);
 
-          let capitalizedBrand = '';
-          if (brand) {
-            if (brand.toLowerCase() === 'blend360') {
-              capitalizedBrand = 'Blend360';
-            } else if (brand.toLowerCase() === 'jalios') {
-              capitalizedBrand = 'Jalios';
-            } else {
-              capitalizedBrand = brand.charAt(0).toUpperCase() + brand.slice(1);
-            }
-          }
-
-          const isGeneric = !finalPublisher || 
-                            finalPublisher.length < 2 || 
-                            /^(source|sources|reference|references|url|urls|link|links|website|websites|homepage|homepages|page|pages)$/i.test(finalPublisher);
-
-          if (isGeneric) {
-            finalPublisher = capitalizedBrand || 'Source';
-          }
-
+        for (const slug of slugs) {
+          // Format slug into a clean URL path segment
+          const cleanSlug = slug.trim().replace(/\s+/g, '-').replace(/^\/+|\/+$/g, '');
+          const finalUrl = `https://${resolvedDomain}/${cleanSlug}`;
+          
+          const finalPublisher = getCanonicalPublisherName(cleanedPublisher, finalUrl);
           results.push({ publisher: finalPublisher, url: finalUrl, year });
         }
         continue;
@@ -550,15 +659,7 @@ export function extractLinks(text: string): LinkData[] {
       } catch (e) {}
     }
 
-    if (!finalPublisher || finalPublisher.length < 2 || finalPublisher.toLowerCase() === 'source') {
-        try {
-          const urlObj = new URL(finalUrl);
-          let pub = urlObj.hostname.replace(/^www\./, '');
-          finalPublisher = pub.charAt(0).toUpperCase() + pub.slice(1);
-        } catch (e) {
-          finalPublisher = 'Source';
-        }
-    }
+    finalPublisher = getCanonicalPublisherName(finalPublisher, finalUrl);
     
     // SPECIAL CASE: If the "URL" we found is actually a naked domain that was immediately followed by a comma, 
     // it was likely the publisher name. We skip it if there's a better URL coming up.

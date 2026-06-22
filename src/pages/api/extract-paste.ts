@@ -454,19 +454,28 @@ export const POST: APIRoute = async ({ request }) => {
           return extractLinks($el.text());
         };
         
-        // 1. Identify and remove scattered sources
-        $('p, li, div').each((_, el) => {
-          const $el = $(el);
-          const text = $el.text().trim();
-          const links = getLinksFromElement($el);
-          
-          if (links.length > 0) {
-            sectionSources.push(...links);
-            if (isPureSourceBlock(text, links)) {
-              $el.remove();
-            }
+        // 1. Walk backward from the last element to find pure source blocks at the very end of the section
+        let $last = $.root().children().last();
+        while ($last.length > 0) {
+          const title = $last.text().trim().toLowerCase();
+          const isSourcesHeader = title === 'sources' || title === 'source' || title === 'sources:' || title === 'source:';
+          if (isSourcesHeader) {
+            const $prev = $last.prev();
+            $last.remove();
+            $last = $prev;
+            continue;
           }
-        });
+
+          const links = getLinksFromElement($last);
+          if (links.length > 0 && isPureSourceBlock($last.text().trim(), links)) {
+            sectionSources.push(...links);
+            const $prev = $last.prev();
+            $last.remove();
+            $last = $prev;
+          } else {
+            break;
+          }
+        }
 
         // 2. Identify and remove existing "Sources" headers and their consecutive content
         $('h1, h2, h3, h4, h5, h6, p, li, strong, em, b').each((_, h2El) => {
