@@ -2175,7 +2175,8 @@ function renderCompareGroups(groups) {
       copyBtn.title = 'Copy value';
       copyBtn.textContent = '⧉';
       copyBtn.disabled = field.values.length === 0;
-      copyBtn.addEventListener('click', () => {
+      copyBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // don't also trigger the row's jump-to-report click below
         navigator.clipboard.writeText(field.values.join(', ')).then(() => {
           copyBtn.classList.add('copied');
           setTimeout(() => copyBtn.classList.remove('copied'), 800);
@@ -2185,11 +2186,223 @@ function renderCompareGroups(groups) {
       row.appendChild(labelEl);
       row.appendChild(valueEl);
       row.appendChild(copyBtn);
+
+      // Report-lookup wiring: only these specific fields/groups get a click-to-fetch
+      // action, per what was asked - everything else stays a plain reference row.
+      // sectionHeader can be a single header name or an array of alternate names to try
+      // in order (e.g. a section that goes by a couple of different titles).
+      const normLabel = field.label.trim().toLowerCase();
+      let sectionHeader = null;
+
+      if (group.title === 'Introduction') {
+        sectionHeader = 'Founding Details & Initial Focus';
+      } else if (
+        (normLabel.includes('g2') && normLabel.includes('rating')) ||
+        (normLabel.includes('capterra') && normLabel.includes('rating'))
+      ) {
+        sectionHeader = 'Customer Level of Satisfaction';
+      } else if (group.title === 'Competitive Landscape') {
+        if (normLabel.includes('platform')) {
+          sectionHeader = 'Platform Competition';
+        } else if (normLabel.includes('adjacent')) {
+          sectionHeader = 'Adjacent Competition';
+        } else if (normLabel.includes('point solution')) {
+          sectionHeader = ['Point Solution Competition', 'Point Solutions Competition', 'Direct Competition'];
+        } else {
+          // Fallback for any other field that might show up in this group
+          sectionHeader = ['Competitive Landscape'];
+        }
+      }
+
+      if (sectionHeader) {
+        row.classList.add('jumpable');
+        row.title = "Click to fetch this section's content from the open report";
+        row.addEventListener('click', () => {
+          fetchReportSection(sectionHeader, row);
+        });
+      }
+
       groupEl.appendChild(row);
+
+      // Special case: a dedicated "browse possible verified customers" action under the
+      // Number of Customers field, since it isn't a simple click-the-row lookup - it's an
+      // extra affordance, not baked into the row itself.
+      if (normLabel === 'number of customers') {
+        const browseWrap = document.createElement('div');
+        browseWrap.className = 'compare-browse-wrap';
+
+        const browseBtn = document.createElement('button');
+        browseBtn.type = 'button';
+        browseBtn.className = 'compare-browse-btn';
+        browseBtn.textContent = 'Browse possible verified customers';
+        browseBtn.addEventListener('click', () => {
+          fetchReportSection(['Customer Overview', 'Customers Overview'], browseWrap);
+        });
+
+        browseWrap.appendChild(browseBtn);
+        groupEl.appendChild(browseWrap);
+      }
     });
 
     spCompareList.appendChild(groupEl);
   });
+}
+
+// --- Report lookup: reaches into the open Dedale editor tab (editor.dedale.com) in the
+// background and reads back what's listed under a given section, without ever switching
+// focus to that tab. Results and errors render inline right under the row/button that was
+// clicked. If the section isn't found on the first try, the tab is silently reloaded (still
+// without stealing focus) and the lookup is retried once, in case its content was stale or
+// hadn't finished rendering yet. ---
+const DEDALE_EDITOR_URL_PATTERN = 'https://editor.dedale.com/*';
+
+function findDedaleEditorTab(callback) {
+  chrome.tabs.query({ url: DEDALE_EDITOR_URL_PATTERN }, (tabs) => {
+    if (!tabs || tabs.length === 0) {
+      callback(null);
+      return;
+    }
+    // Multiple report tabs can legitimately be open at once (different companies) - use
+    // whichever was looked at most recently rather than an arbitrary one, so this doesn't
+    // silently pull data from the wrong company's report.
+    const sorted = tabs.slice().sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+    callback(sorted[0]);
+  });
+}
+
+// Once a tab has returned a section successfully, it's proven to be fully loaded and
+// responsive - there's no reason to reload it again just because a later lookup (even a
+// different section) is requested. Reloading stays reserved for a tab's very first lookup,
+// in case the SPA hadn't finished rendering yet.
+const warmDedaleTabs = new Set();
+
+// Cache of already-fetched sections per tab, so re-clicking the same field (or a different
+// field that maps to the same header) shows the previous result instantly - no messaging or
+// reload at all.
+const reportSectionCache = new Map();
+function sectionCacheKey(tabId, candidates) {
+  return `${tabId}::${candidates.join('|').trim().toLowerCase()}`;
+}
+
+function clearDedaleTabState(tabId) {
+  warmDedaleTabs.delete(tabId);
+  for (const key of Array.from(reportSectionCache.keys())) {
+    if (key.startsWith(`${tabId}::`)) reportSectionCache.delete(key);
+  }
+}
+
+// Cached data (and "warm" status) is only valid for as long as the tab stays on the same
+// report - drop it once the tab closes or navigates somewhere else.
+chrome.tabs.onRemoved.addListener((tabId) => clearDedaleTabState(tabId));
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.url) clearDedaleTabState(tabId);
+});
+
+function fetchReportSection(headerNames, anchorEl) {
+  const candidates = Array.isArray(headerNames) ? headerNames : [headerNames];
+  const displayLabel = candidates[0];
+
+  findDedaleEditorTab((tab) => {
+    if (!tab) {
+      showInlineResult(anchorEl, { type: 'error', message: '⚠ Open the report at editor.dedale.com first.' });
+      return;
+    }
+
+    const cached = reportSectionCache.get(sectionCacheKey(tab.id, candidates));
+    if (cached) {
+      showInlineResult(anchorEl, { type: 'success', message: `Found under "${cached.matchedHeader}" in the report:`, items: cached.items });
+      return;
+    }
+
+    attemptFetchSection(tab.id, candidates, displayLabel, anchorEl, false);
+  });
+}
+
+function attemptFetchSection(tabId, candidates, displayLabel, anchorEl, alreadyRetried) {
+  chrome.tabs.sendMessage(tabId, { action: 'fetchSectionContent', headerCandidates: candidates }, (response) => {
+    if (chrome.runtime.lastError || !response || !response.success) {
+      // Skip the reload if this tab already proved itself by returning data before - a miss
+      // now means the section genuinely isn't there, not that the page needs refreshing.
+      if (!alreadyRetried && !warmDedaleTabs.has(tabId)) {
+        showInlineResult(anchorEl, { type: 'info', message: 'Not found yet - refreshing the report and retrying...' });
+        silentlyReloadAndWait(tabId, () => {
+          attemptFetchSection(tabId, candidates, displayLabel, anchorEl, true);
+        });
+        return;
+      }
+      const suffix = alreadyRetried ? ', even after refreshing it.' : '.';
+      showInlineResult(anchorEl, { type: 'error', message: `⚠ Could not find "${displayLabel}" in the report${suffix}` });
+      return;
+    }
+
+    warmDedaleTabs.add(tabId);
+    const matchedName = response.matchedHeader || displayLabel;
+    reportSectionCache.set(sectionCacheKey(tabId, candidates), { items: response.items || [], matchedHeader: matchedName });
+    showInlineResult(anchorEl, { type: 'success', message: `Found under "${matchedName}" in the report:`, items: response.items || [] });
+  });
+}
+
+/**
+ * Reloads the report tab in the background (never switches to it or steals focus) and
+ * waits for it to finish loading before continuing.
+ */
+function silentlyReloadAndWait(tabId, callback) {
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    chrome.tabs.onUpdated.removeListener(listener);
+    setTimeout(callback, 600); // let the SPA's own client-side render settle after load
+  };
+
+  const listener = (updatedTabId, changeInfo) => {
+    if (updatedTabId === tabId && changeInfo.status === 'complete') finish();
+  };
+
+  chrome.tabs.onUpdated.addListener(listener);
+  chrome.tabs.reload(tabId);
+
+  setTimeout(finish, 8000); // safety net in case 'complete' never fires
+}
+
+/**
+ * Renders a result (success or error) directly below the row/button that triggered a
+ * report lookup, replacing any previous result in that same spot.
+ */
+function showInlineResult(anchorEl, { type, message, items } = {}) {
+  const next = anchorEl.nextElementSibling;
+  if (next && next.classList && next.classList.contains('compare-extracted')) {
+    next.remove();
+  }
+
+  const block = document.createElement('div');
+  block.className = 'compare-extracted' + (type === 'error' ? ' error' : type === 'success' ? ' success' : '');
+
+  if (message) {
+    const title = document.createElement('div');
+    title.className = 'compare-extracted-title';
+    title.textContent = message;
+    block.appendChild(title);
+  }
+
+  if (items) {
+    if (items.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'compare-extracted-empty';
+      empty.textContent = 'No content found under that header.';
+      block.appendChild(empty);
+    } else {
+      const ul = document.createElement('ul');
+      items.forEach(text => {
+        const li = document.createElement('li');
+        li.textContent = text;
+        ul.appendChild(li);
+      });
+      block.appendChild(ul);
+    }
+  }
+
+  anchorEl.insertAdjacentElement('afterend', block);
 }
 
 function escapeHtmlForCompare(str) {

@@ -281,12 +281,22 @@ header {
 }
 
 .status-container {
-  margin-top: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
   margin-bottom: 12px;
+  padding-top: 8px;
+  padding-bottom: 4px;
+  background-color: var(--bg-primary);
 }
 
 .status-container:empty {
   margin: 0;
+  padding: 0;
+}
+
+.status-container:not(:empty) {
+  box-shadow: 0 8px 12px -6px rgba(0, 0, 0, 0.35);
 }
 
 .status-card {
@@ -482,6 +492,100 @@ header {
   color: var(--text-muted);
   text-align: center;
   padding: 24px 12px;
+}
+
+/* Jump-to-report interactions (Audit Compare tab) */
+.compare-row.jumpable {
+  cursor: pointer;
+}
+
+.compare-row.jumpable:hover {
+  border-color: var(--accent-color);
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+.compare-row.jumpable .compare-label::after {
+  content: ' ⤴';
+  color: var(--accent-color);
+  opacity: 0.7;
+}
+
+.compare-browse-wrap {
+  margin: -2px 0 6px 0;
+}
+
+.compare-browse-btn {
+  width: 100%;
+  background-color: var(--bg-tertiary);
+  border: 1px dashed var(--border-color);
+  color: var(--accent-color);
+  padding: 7px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.compare-browse-btn:hover {
+  border-color: var(--accent-color);
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+.compare-extracted {
+  margin: -2px 0 6px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-left: 2px solid var(--accent-color);
+  border-radius: 8px;
+  background-color: var(--bg-tertiary);
+}
+
+.compare-extracted-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.compare-extracted ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.compare-extracted li {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 2px;
+}
+
+.compare-extracted-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.compare-extracted.error {
+  border-left-color: var(--error);
+  background-color: var(--error-glow);
+}
+
+.compare-extracted.error .compare-extracted-title {
+  color: #fca5a5;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.compare-extracted.success {
+  border-left-color: var(--success);
+}
+
+.compare-extracted.success .compare-extracted-title {
+  color: #a7f3d0;
 }
 
 /* Dynamic Field Mapping UI (File Ingestion tab) */

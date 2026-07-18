@@ -3,6 +3,13 @@
  * Scans the page for editable elements and handles programmatically pasting content.
  */
 
+// Guards against registering a second onMessage listener if this script somehow gets
+// injected into the same page more than once (observed during dev-mode extension
+// reloads without a full tab close/reopen) - a stale extra listener from an older version
+// of this file can otherwise win the race to respond before the current code even runs.
+if (!window.__hyperlinksContentScriptLoaded) {
+window.__hyperlinksContentScriptLoaded = true;
+
 // Global index counter for unique field identification
 let fieldCounter = 0;
 
@@ -21,9 +28,375 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success });
     });
     return true; // Keep message channel open for async response
+  } else if (request.action === 'fetchSectionContent') {
+    fetchSectionContent(request.headerCandidates, sendResponse);
   }
   return true; // Keep message channel open for async response
 });
+
+/**
+ * Finds a heading-like element on the page whose text matches the given header text
+ * (e.g. "Founding Details & Initial Focus"). This extension's own report-pasting logic
+ * renders section subheaders as real <h2> elements, but the same phrase (e.g. "Customer
+ * Overview", "Competitive Landscape") can ALSO appear as a bolded bullet label inside the
+ * Executive Summary section. So real <h2> tags are checked first and exclusively for
+ * several passes before any other heading level is considered - a leaf/paragraph fallback
+ * is deliberately NOT used anymore, since that's what previously caused a click meant for
+ * the true section heading to land on an unrelated Executive Summary bullet instead.
+ *
+ * Matching is fuzzy (exact -> substring -> bag-of-words) because the live page's heading
+ * text may carry numbering prefixes ("III. Founding Details & Initial Focus"), different
+ * punctuation ("and" vs "&"), or extra trailing text.
+ */
+function normalizeHeaderText(str) {
+  return (str || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+/**
+ * Like document.querySelectorAll(selector), but also descends into open shadow roots.
+ * Some component libraries render their UI inside a shadow root for style encapsulation,
+ * which a plain querySelectorAll from the main document cannot see into at all - this is
+ * required for those pages, and is a strict superset (identical results) on pages that
+ * don't use shadow DOM at all.
+ */
+function queryAllDeep(selector, root) {
+  const scopeRoot = root || document;
+  const results = [];
+
+  const walk = (node) => {
+    if (!node || !node.children) return;
+    for (const child of node.children) {
+      if (child.matches && child.matches(selector)) results.push(child);
+      if (child.shadowRoot) walk(child.shadowRoot);
+      walk(child);
+    }
+  };
+
+  walk(scopeRoot);
+  return results;
+}
+
+function headerWordsOf(str) {
+  return normalizeHeaderText(str).split(' ').filter(Boolean);
+}
+
+function bestBagOfWordsMatch(els, targetWords) {
+  let best = null;
+  let bestExtraWords = Infinity;
+  for (const el of els) {
+    const text = el.textContent.trim();
+    if (text.length === 0 || text.length > 150) continue;
+    const words = headerWordsOf(text);
+    const hasAll = targetWords.every(w => words.includes(w));
+    if (hasAll && words.length - targetWords.length < bestExtraWords) {
+      best = el;
+      bestExtraWords = words.length - targetWords.length;
+    }
+  }
+  return best;
+}
+
+function findHeaderElement(headerText) {
+  const targetWords = headerWordsOf(headerText);
+  if (targetWords.length === 0) return null;
+  const targetNorm = targetWords.join(' ');
+
+  const h2Els = queryAllDeep('h2');
+  const otherHeadingEls = queryAllDeep('h1, h3, h4, h5, h6, [role="heading"]');
+
+  // Passes 1-2: exact match, h2 first
+  for (const el of h2Els) {
+    if (normalizeHeaderText(el.textContent) === targetNorm) return el;
+  }
+  for (const el of otherHeadingEls) {
+    if (normalizeHeaderText(el.textContent) === targetNorm) return el;
+  }
+
+  // Passes 3-4: full phrase contained (numbering prefixes/suffixes), h2 first
+  for (const el of h2Els) {
+    const text = el.textContent.trim();
+    if (text.length > 0 && text.length < 150 && normalizeHeaderText(text).includes(targetNorm)) return el;
+  }
+  for (const el of otherHeadingEls) {
+    const text = el.textContent.trim();
+    if (text.length > 0 && text.length < 150 && normalizeHeaderText(text).includes(targetNorm)) return el;
+  }
+
+  // Passes 5-6: bag-of-words closest fit, h2 first, other heading levels as last resort
+  const h2Match = bestBagOfWordsMatch(h2Els, targetWords);
+  if (h2Match) return h2Match;
+  const otherMatch = bestBagOfWordsMatch(otherHeadingEls, targetWords);
+  if (otherMatch) return otherMatch;
+
+  return null;
+}
+
+/**
+ * Collects the text of whatever sits between a header and the next heading-like element -
+ * list items if there's a list, otherwise each block's own text. Used to read back
+ * "what's listed under this section" (e.g. verified customers, competitor names) into the
+ * side panel without the user needing to eyeball the report themselves.
+ */
+function extractItemsAfterHeader(headerEl) {
+  let block = headerEl;
+  while (block.parentElement && block.parentElement.tagName !== 'BODY' && block.parentElement.children.length === 1) {
+    block = block.parentElement;
+  }
+
+  const isHeadingLike = (el) => /^h[1-6]$/i.test(el.tagName) || el.getAttribute('role') === 'heading';
+
+  const items = [];
+  let node = block.nextElementSibling;
+  let guard = 0;
+  while (node && !isHeadingLike(node) && guard < 200) {
+    guard++;
+    const listItems = node.querySelectorAll ? Array.from(node.querySelectorAll('li')) : [];
+    if (listItems.length > 0) {
+      listItems.forEach(li => {
+        const text = li.textContent.trim();
+        if (text) items.push(text);
+      });
+    } else {
+      const text = node.textContent ? node.textContent.trim() : '';
+      if (text) items.push(text);
+    }
+    node = node.nextElementSibling;
+  }
+
+  return items;
+}
+
+// "Platform Competition" / "Adjacent Competition" / "Point Solution(s) Competition" /
+// "Direct Competition" render as inline bold labels inside a bullet or paragraph under the
+// "Competitive Landscape" heading, not as their own headings - findHeaderElement deliberately
+// won't match them (that's what stops the Executive Summary collision elsewhere). So instead
+// this scopes the search to only the content sitting under the Competitive Landscape heading,
+// finds the block whose text starts with the requested label, and returns the rest of that
+// text - stopping continuation blocks at the next sibling label or the next real heading, so
+// two adjacent competition types never bleed into each other.
+const COMPETITION_INLINE_LABELS = [
+  'Platform Competition',
+  'Adjacent Competition',
+  'Point Solution Competition',
+  'Point Solutions Competition',
+  'Direct Competition'
+];
+
+function isCompetitionInlineLabel(candidate) {
+  const norm = normalizeHeaderText(candidate);
+  return COMPETITION_INLINE_LABELS.some(l => normalizeHeaderText(l) === norm);
+}
+
+function buildLabelPrefixRegex(labelText) {
+  const words = headerWordsOf(labelText);
+  const escaped = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp('^\\s*' + escaped.join('[\\s-]+') + '\\s*[:\\-–—]?\\s*', 'i');
+}
+
+function findInlineCompetitionItems(landscapeHeaderEl, labelText) {
+  const targetRe = buildLabelPrefixRegex(labelText);
+  const siblingRes = COMPETITION_INLINE_LABELS
+    .filter(l => normalizeHeaderText(l) !== normalizeHeaderText(labelText))
+    .map(buildLabelPrefixRegex);
+
+  const isHeadingLike = (el) => /^h[1-6]$/i.test(el.tagName) || el.getAttribute('role') === 'heading';
+  const isTextBlock = (el) => /^(li|p|div|td|th)$/i.test(el.tagName);
+
+  let block = landscapeHeaderEl;
+  while (block.parentElement && block.parentElement.tagName !== 'BODY' && block.parentElement.children.length === 1) {
+    block = block.parentElement;
+  }
+
+  const items = [];
+  let collecting = false;
+  let node = block.nextElementSibling;
+  let guard = 0;
+
+  while (node && !isHeadingLike(node) && guard < 200) {
+    guard++;
+    const allBlocks = isTextBlock(node) ? [node] : queryAllDeep('li, p, div, td, th', node);
+    // Innermost blocks only, so a wrapping <div>/<li> around a <p> isn't counted twice.
+    const textBlocks = allBlocks.filter(el => !el.querySelector('li, p, div, td, th'));
+    const blocksToCheck = textBlocks.length > 0 ? textBlocks : [node];
+
+    for (const b of blocksToCheck) {
+      const text = b.textContent ? b.textContent.trim() : '';
+      if (!text) continue;
+
+      if (targetRe.test(text)) {
+        collecting = true;
+        const rest = text.replace(targetRe, '').trim();
+        if (rest) items.push(rest);
+        continue;
+      }
+
+      if (siblingRes.some(re => re.test(text))) {
+        collecting = false;
+        continue;
+      }
+
+      if (collecting) items.push(text);
+    }
+
+    node = node.nextElementSibling;
+  }
+
+  return items;
+}
+
+/**
+ * Finds a clickable element (tab, button, link) whose text matches, for switching the
+ * page's own in-app tabs (e.g. "Profile") rather than searching for report content.
+ * Prioritizes [role="tab"] elements specifically, since that's the standard ARIA role for
+ * tab controls (used by most tab-bar component libraries) and the most likely actual
+ * target when a tab bar's visible text sits in a styled wrapper rather than a plain button.
+ */
+function findClickableElementByText(text) {
+  const targetWords = headerWordsOf(text);
+  if (targetWords.length === 0) return null;
+  const targetNorm = targetWords.join(' ');
+
+  const tabEls = queryAllDeep('[role="tab"]');
+  const interactiveSelector = 'button, [role="tab"], [role="button"], a, [tabindex]';
+  const interactiveEls = queryAllDeep(interactiveSelector);
+
+  // Pass 1: exact match, real tabs first
+  for (const el of tabEls) {
+    if (normalizeHeaderText(el.textContent) === targetNorm) return el;
+  }
+  for (const el of interactiveEls) {
+    if (normalizeHeaderText(el.textContent) === targetNorm) return el;
+  }
+
+  // Pass 2: full phrase contained (handles an icon/badge adding extra text), tabs first
+  for (const el of tabEls) {
+    const t = el.textContent.trim();
+    if (t.length > 0 && t.length < 60 && normalizeHeaderText(t).includes(targetNorm)) return el;
+  }
+  for (const el of interactiveEls) {
+    const t = el.textContent.trim();
+    if (t.length > 0 && t.length < 60 && normalizeHeaderText(t).includes(targetNorm)) return el;
+  }
+
+  // Pass 3: bag-of-words closest fit, tabs first
+  const tabMatch = bestBagOfWordsMatch(tabEls, targetWords);
+  if (tabMatch) return tabMatch;
+  const interactiveMatch = bestBagOfWordsMatch(interactiveEls, targetWords);
+  if (interactiveMatch) return interactiveMatch;
+
+  // Fallback: text often sits in a nested span inside the real clickable element - climb
+  // up looking for the nearest ancestor that's actually interactive.
+  const leafEls = queryAllDeep('*').filter(el => el.children.length === 0 && !el.shadowRoot);
+  for (const el of leafEls) {
+    const txt = el.textContent.trim();
+    if (txt.length > 0 && txt.length < 40 && normalizeHeaderText(txt) === targetNorm) {
+      let node = el;
+      for (let i = 0; i < 8 && node; i++) {
+        if (node.matches && node.matches(interactiveSelector)) return node;
+        node = node.parentElement;
+      }
+      return el;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The report's section content (Founding Details, Customer Overview, Competitive
+ * Landscape, etc.) only renders while the company page's "Profile" tab is selected - the
+ * page opens on "Summary" by default, which is a different view entirely. Clicking
+ * "Profile" when it's already selected is a harmless no-op, so this always clicks it
+ * rather than trying to detect whether it's already active.
+ */
+function clickProfileTabIfFound() {
+  // The tab is labeled "AI Profile" on the live page (confirmed via its
+  // "radix-...-trigger-ai-profile" element id), so that's tried first; "Profile" is kept
+  // as a fallback in case a report without the AI feature just shows "Profile".
+  const tabNameCandidates = ['AI Profile', 'Profile'];
+
+  let profileTab = null;
+  for (const name of tabNameCandidates) {
+    profileTab = findClickableElementByText(name);
+    if (profileTab) break;
+  }
+
+  if (!profileTab) {
+    const tabTexts = queryAllDeep('[role="tab"]').map(el => JSON.stringify(el.textContent.trim())).filter(t => t !== '""');
+    console.log('Hyperlinks: could not find an "AI Profile"/"Profile" tab/button on this page. [role="tab"] elements found:', tabTexts);
+    return;
+  }
+  console.log('Hyperlinks: found tab element ->', profileTab.tagName, profileTab.className, JSON.stringify(profileTab.textContent.trim()), profileTab);
+  profileTab.click();
+}
+
+/**
+ * Tries each candidate header name in order (e.g. "Point Solution Competition",
+ * "Point Solutions Competition", "Direct Competition" as alternate names for the same
+ * section), and reads back whatever's listed under the first one found on the page. Purely
+ * a background data read - never scrolls, highlights, or switches focus to the tab.
+ *
+ * The page can take several seconds to finish loading/rendering the Profile tab's content
+ * (observed ~8s on a real report), so rather than guessing a fixed delay, this clicks
+ * Profile once and then polls for the target header to actually appear, checking every
+ * 400ms up to maxWaitMs before giving up.
+ */
+function fetchSectionContent(headerCandidates, sendResponse) {
+  const candidates = Array.isArray(headerCandidates) ? headerCandidates : [headerCandidates];
+  clickProfileTabIfFound();
+
+  const pollIntervalMs = 400;
+  const maxWaitMs = 8000;
+  const startTime = Date.now();
+
+  function poll() {
+    let el = null;
+    let matchedHeader = null;
+    for (const candidate of candidates) {
+      el = findHeaderElement(candidate);
+      if (el) {
+        matchedHeader = candidate;
+        break;
+      }
+    }
+
+    if (el) {
+      const items = extractItemsAfterHeader(el);
+      sendResponse({ success: true, items, matchedHeader });
+      return;
+    }
+
+    // None of the candidates are real headings - if any of them is actually an inline
+    // label (Platform/Adjacent/Point Solution(s)/Direct Competition), look for it inside
+    // the Competitive Landscape section's own body text instead. Each alias (e.g. singular
+    // vs plural "Point Solution(s) Competition") is tried in turn since only one of them
+    // will actually match the report's exact wording.
+    const inlineCandidates = candidates.filter(isCompetitionInlineLabel);
+    if (inlineCandidates.length > 0) {
+      const landscapeHeading = findHeaderElement('Competitive Landscape');
+      if (landscapeHeading) {
+        for (const inlineCandidate of inlineCandidates) {
+          const items = findInlineCompetitionItems(landscapeHeading, inlineCandidate);
+          if (items.length > 0) {
+            sendResponse({ success: true, items, matchedHeader: inlineCandidate });
+            return;
+          }
+        }
+      }
+    }
+
+    if (Date.now() - startTime >= maxWaitMs) {
+      console.log(`Hyperlinks: gave up after ${maxWaitMs}ms looking for one of`, candidates, '- headings currently on page:',
+        queryAllDeep('h1, h2, h3, h4, h5, h6, [role="heading"]').map(h => h.textContent.trim()).filter(Boolean));
+      sendResponse({ success: false, items: [], matchedHeader: null });
+      return;
+    }
+
+    setTimeout(poll, pollIntervalMs);
+  }
+
+  setTimeout(poll, 300); // give the Profile click a brief moment before the first check
+}
 
 /**
  * Finds all editable fields on the webpage and maps them.
@@ -348,3 +721,5 @@ async function pasteFromClipboard(fieldId, htmlContent, plainText) {
   triggerStateEvents(el);
   return true;
 }
+
+} // end of __hyperlinksContentScriptLoaded guard
