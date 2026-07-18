@@ -2184,6 +2184,14 @@ function parseAuditTagSet(htmlContent) {
       rawValue = '';
     }
 
+    // "— not found" style annotations (used in table-form tag sets)
+    const notFoundMatch = /^[—\-–]+\s*not found\s*$/i.exec(rawValue);
+    if (notFoundMatch) {
+      note = 'not found';
+      flagged = true;
+      rawValue = '';
+    }
+
     if (!rawValue || /^n\/a$/i.test(rawValue)) {
       flagged = true;
       if (!note) note = 'no value provided';
@@ -2209,11 +2217,32 @@ function parseAuditTagSet(htmlContent) {
     processFieldValue(match[1].trim(), match[2]);
   }
 
-  // "Field | Value" table rows, as used when the tag set is authored as a table instead of
-  // a bullet list. The header row (Field/Value) is skipped so it doesn't become a fake field.
+  // "Field | Value" (or "Section | Field | Value") table rows, as used when the tag set is
+  // authored as a table instead of a bullet list. Header rows are skipped so they don't
+  // become fake fields.
   function processTableRow(row) {
     const cells = Array.from(row.querySelectorAll('td, th'));
     if (cells.length === 0) return;
+
+    // 3-column table: Section | Field | Value - the Section column names the group
+    // directly, so grouping doesn't need to be inferred from divider rows at all.
+    if (cells.length >= 3) {
+      const sectionTitle = cells[0].textContent.trim();
+      const label = cells[1].textContent.trim();
+      const rawValue = cells[2].textContent.trim();
+      if (/^section$/i.test(sectionTitle) && /^field$/i.test(label) && /^value$/i.test(rawValue)) return; // header row
+      if (!sectionTitle || !label) return;
+
+      // Stay on the same group across contiguous rows (including across a page-break split
+      // into a second <table>) rather than creating a duplicate group each time the section
+      // repeats.
+      if (!currentGroup || currentGroup.title !== sectionTitle) {
+        currentGroup = { title: sectionTitle, fields: [] };
+        groups.push(currentGroup);
+      }
+      processFieldValue(label, rawValue);
+      return;
+    }
 
     // A merged, single-cell row acts as a section divider within the table - the table
     // equivalent of the short standalone heading lines that start a new group between
