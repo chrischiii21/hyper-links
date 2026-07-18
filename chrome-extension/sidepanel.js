@@ -167,6 +167,15 @@ function switchTab(mode) {
   mappingSection.style.display = (mode === 'upload' && mappingSectionHasData) ? 'block' : 'none';
 }
 
+// --- Back to Top ---
+const backToTopBtn = document.getElementById('back-to-top-btn');
+window.addEventListener('scroll', () => {
+  backToTopBtn.classList.toggle('show', window.scrollY > 200);
+});
+backToTopBtn.addEventListener('click', () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
 // --- Drag & Drop / File Upload Handlers ---
 dropzone.addEventListener('click', () => fileInput.click());
 dropzone.addEventListener('dragover', (e) => {
