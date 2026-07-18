@@ -2056,13 +2056,8 @@ function parseAuditTagSet(htmlContent) {
   const groups = [];
   let currentGroup = null;
 
-  function processFieldLine(lineText) {
-    const cleaned = lineText.replace(/^[•●◦▪\-]\s*/, '');
-    const match = /^(.+?):\s*(.*)$/s.exec(cleaned);
-    if (!match) return;
-
-    const label = match[1].trim();
-    let rawValue = match[2].trim();
+  function processFieldValue(label, rawValueIn) {
+    let rawValue = rawValueIn.trim();
 
     let note = null;
     let flagged = false;
@@ -2073,6 +2068,22 @@ function parseAuditTagSet(htmlContent) {
       note = bracketMatch[1].trim();
       rawValue = rawValue.slice(0, bracketMatch.index).trim();
       flagged = true;
+    }
+
+    // "— omit (reason)" / "-- omit (reason)" style annotations (used in table-form tag sets)
+    const omitMatch = /^[—\-–]+\s*omit\s*(?:\(([^)]*)\))?\s*$/i.exec(rawValue);
+    if (omitMatch) {
+      note = omitMatch[1] ? omitMatch[1].trim() : 'omit';
+      flagged = true;
+      rawValue = '';
+    }
+
+    // "FLAG: ..." leading annotations
+    const flagMatch = /^FLAG:\s*(.*)$/i.exec(rawValue);
+    if (flagMatch) {
+      note = flagMatch[1].trim();
+      flagged = true;
+      rawValue = '';
     }
 
     if (!rawValue || /^n\/a$/i.test(rawValue)) {
@@ -2092,6 +2103,51 @@ function parseAuditTagSet(htmlContent) {
     currentGroup.fields.push({ label, values, note, flagged });
   }
 
+  function processFieldLine(lineText) {
+    const cleaned = lineText.replace(/^[•●◦▪\-]\s*/, '');
+    const match = /^(.+?):\s*(.*)$/s.exec(cleaned);
+    if (!match) return;
+
+    processFieldValue(match[1].trim(), match[2]);
+  }
+
+  // "Field | Value" table rows, as used when the tag set is authored as a table instead of
+  // a bullet list. The header row (Field/Value) is skipped so it doesn't become a fake field.
+  function processTableRow(row) {
+    const cells = Array.from(row.querySelectorAll('td, th'));
+    if (cells.length === 0) return;
+
+    // A merged, single-cell row acts as a section divider within the table - the table
+    // equivalent of the short standalone heading lines that start a new group between
+    // bullet-list items. Same grouping behavior, just inside a table instead of a list.
+    if (cells.length === 1) {
+      const headingText = cells[0].textContent.trim();
+      if (headingText) {
+        currentGroup = { title: headingText, fields: [] };
+        groups.push(currentGroup);
+      }
+      return;
+    }
+
+    const label = cells[0].textContent.trim();
+    const rawValue = cells[1].textContent.trim();
+    if (!label) return;
+    if (/^field$/i.test(label) && /^value$/i.test(rawValue)) return; // header row
+
+    // A two-cell row with a completely blank value cell is also a section divider, not a
+    // real field - Word tables commonly render a merged heading cell as <td>Heading</td>
+    // followed by an empty <td></td> rather than an actual colspan. Genuine "no value"
+    // fields always carry placeholder text (e.g. "— omit (not found)"), so a truly empty
+    // cell is a safe signal this is a heading row, not data.
+    if (!rawValue) {
+      currentGroup = { title: label, fields: [] };
+      groups.push(currentGroup);
+      return;
+    }
+
+    processFieldValue(label, rawValue);
+  }
+
   let node = topAncestor.nextElementSibling;
   while (node) {
     const text = node.textContent.trim();
@@ -2101,7 +2157,9 @@ function parseAuditTagSet(htmlContent) {
 
     const tag = node.tagName.toLowerCase();
 
-    if (tag === 'ul' || tag === 'ol') {
+    if (tag === 'table') {
+      Array.from(node.querySelectorAll('tr')).forEach(processTableRow);
+    } else if (tag === 'ul' || tag === 'ol') {
       Array.from(node.children).forEach(li => processFieldLine(li.textContent.trim()));
     } else if (tag === 'li') {
       processFieldLine(text);
@@ -2187,31 +2245,37 @@ function renderCompareGroups(groups) {
       row.appendChild(valueEl);
       row.appendChild(copyBtn);
 
-      // Report-lookup wiring: only these specific fields/groups get a click-to-fetch
-      // action, per what was asked - everything else stays a plain reference row.
+      // Report-lookup wiring: only these specific fields get a click-to-fetch action, per
+      // what was asked - everything else stays a plain reference row. Matched purely by the
+      // field's own label text (not by which group/heading it happened to fall under) so
+      // this keeps working the same whether the tag set was authored as bullets or as a
+      // table - a table-form doc often has no literal "Introduction"/"Competitive
+      // Landscape" divider row at all.
       // sectionHeader can be a single header name or an array of alternate names to try
       // in order (e.g. a section that goes by a couple of different titles).
       const normLabel = field.label.trim().toLowerCase();
       let sectionHeader = null;
 
-      if (group.title === 'Introduction') {
+      if (
+        normLabel.includes('hq country') ||
+        normLabel.includes('hq city') ||
+        normLabel.includes('year founded')
+      ) {
         sectionHeader = 'Founding Details & Initial Focus';
       } else if (
         (normLabel.includes('g2') && normLabel.includes('rating')) ||
         (normLabel.includes('capterra') && normLabel.includes('rating'))
       ) {
         sectionHeader = 'Customer Level of Satisfaction';
-      } else if (group.title === 'Competitive Landscape') {
-        if (normLabel.includes('platform')) {
-          sectionHeader = 'Platform Competition';
-        } else if (normLabel.includes('adjacent')) {
-          sectionHeader = 'Adjacent Competition';
-        } else if (normLabel.includes('point solution')) {
-          sectionHeader = ['Point Solution Competition', 'Point Solutions Competition', 'Direct Competition'];
-        } else {
-          // Fallback for any other field that might show up in this group
-          sectionHeader = ['Competitive Landscape'];
-        }
+      } else if (normLabel.includes('platform')) {
+        sectionHeader = 'Platform Competition';
+      } else if (normLabel.includes('adjacent')) {
+        sectionHeader = 'Adjacent Competition';
+      } else if (normLabel.includes('point')) {
+        sectionHeader = ['Point Solution Competition', 'Point Solutions Competition', 'Direct Competition'];
+      } else if (normLabel.includes('competit')) {
+        // Fallback for any other competitor/competition-named field
+        sectionHeader = ['Competitive Landscape'];
       }
 
       if (sectionHeader) {
