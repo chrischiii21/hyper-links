@@ -850,3 +850,102 @@ header {
 .back-to-top-btn:active {
   transform: translateY(0) scale(0.94);
 }
+
+/* Embedded Browser tab */
+/* Quick Company Lookup (auto-search) */
+.auto-search-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.auto-search-toolbar {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.auto-search-toolbar input {
+  flex: 1;
+  min-width: 0;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: var(--font-family);
+  font-size: 12px;
+  outline: none;
+}
+
+.auto-search-toolbar input:focus {
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.auto-search-go-btn {
+  flex-shrink: 0;
+  width: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent-color), #4f46e5);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  transition: filter 0.2s;
+}
+
+.auto-search-go-btn:hover {
+  filter: brightness(1.1);
+}
+
+.auto-search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.auto-search-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background-color: var(--bg-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.auto-search-open-btn {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 5px 10px;
+  color: var(--accent-color);
+  font-family: var(--font-family);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.auto-search-open-btn:hover {
+  color: var(--border-hover);
+  border-color: var(--border-hover);
+}
+
+.auto-search-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}

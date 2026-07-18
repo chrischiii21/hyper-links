@@ -107,10 +107,12 @@ const tabUpload = document.getElementById('tab-upload');
 const tabPaste = document.getElementById('tab-paste');
 const tabSanitize = document.getElementById('tab-sanitize');
 const tabCompare = document.getElementById('tab-compare');
+const tabBrowser = document.getElementById('tab-browser');
 const uploadContent = document.getElementById('upload-tab-content');
 const pasteContent = document.getElementById('paste-tab-content');
 const sanitizeContent = document.getElementById('sanitize-tab-content');
 const compareContent = document.getElementById('compare-tab-content');
+const browserContent = document.getElementById('browser-tab-content');
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
 const linkExtractorInput = document.getElementById('link-extractor-input');
@@ -147,7 +149,8 @@ const TABS = {
   upload: { button: tabUpload, content: uploadContent },
   paste: { button: tabPaste, content: pasteContent },
   sanitize: { button: tabSanitize, content: sanitizeContent },
-  compare: { button: tabCompare, content: compareContent }
+  compare: { button: tabCompare, content: compareContent },
+  browser: { button: tabBrowser, content: browserContent }
 };
 
 Object.keys(TABS).forEach(mode => {
@@ -174,6 +177,40 @@ window.addEventListener('scroll', () => {
 });
 backToTopBtn.addEventListener('click', () => {
   window.scrollTo({ top: 0, behavior: 'smooth' });
+});
+
+// --- Quick Company Lookup (auto-search) ---
+// Builds 3 fixed general web search queries for a typed company name, but only opens a
+// tab when its "Open" button is actually clicked - entering/searching a name just prepares
+// the 3 result rows. (Embedding these results in-panel was tried first - Google, then
+// DuckDuckGo's HTML endpoint - but every mainstream search engine sends X-Frame-Options/CSP
+// headers that refuse to render inside any iframe, so a new tab is the only way to
+// actually view them.)
+const autoSearchInput = document.getElementById('auto-search-input');
+const autoSearchBtn = document.getElementById('auto-search-btn');
+const autoSearchResults = document.getElementById('auto-search-results');
+const autoSearchG2Open = document.getElementById('auto-search-g2-open');
+const autoSearchCapterraOpen = document.getElementById('auto-search-capterra-open');
+const autoSearchDemoOpen = document.getElementById('auto-search-demo-open');
+
+function runAutoSearch(company) {
+  const name = company.trim();
+  if (!name) return;
+
+  const g2Url = `https://www.bing.com/search?q=${encodeURIComponent(name + ' G2 rating and number of reviews')}`;
+  const capterraUrl = `https://www.bing.com/search?q=${encodeURIComponent(name + ' Capterra rating and number of reviews')}`;
+  const demoUrl = `https://www.bing.com/search?q=${encodeURIComponent(name + ' demo video')}`;
+
+  autoSearchG2Open.onclick = () => chrome.tabs.create({ url: g2Url });
+  autoSearchCapterraOpen.onclick = () => chrome.tabs.create({ url: capterraUrl });
+  autoSearchDemoOpen.onclick = () => chrome.tabs.create({ url: demoUrl });
+
+  autoSearchResults.style.display = 'flex';
+}
+
+autoSearchBtn.addEventListener('click', () => runAutoSearch(autoSearchInput.value));
+autoSearchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') runAutoSearch(autoSearchInput.value);
 });
 
 // --- Drag & Drop / File Upload Handlers ---

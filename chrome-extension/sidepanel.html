@@ -34,6 +34,10 @@
       <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="13" height="13"><path d="M3 4h18v16H3zM14 4v16"/></svg>
       <span class="tab-label">Compare</span>
     </button>
+    <button class="tab-btn" id="tab-browser" title="Quick Company Lookup">
+      <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="13" height="13"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
+      <span class="tab-label">Lookup</span>
+    </button>
   </div>
 
   <!-- Sticky Header Group: company banner + status card both stay pinned to the top so
@@ -105,6 +109,35 @@
     </div>
 
     <div id="sp-compare-list"></div>
+  </div>
+
+  <div id="browser-tab-content" class="tab-content">
+    <div class="auto-search-panel">
+      <p class="auto-search-section-label">Quick Company Lookup</p>
+      <div class="auto-search-toolbar">
+        <input type="text" id="auto-search-input" placeholder="Enter a company name...">
+        <button class="auto-search-go-btn" id="auto-search-btn" title="Search">
+          <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="13" height="13"><circle cx="11" cy="11" r="7"/><path stroke-linecap="round" d="M21 21l-4.35-4.35"/></svg>
+        </button>
+      </div>
+
+      <div class="auto-search-results" id="auto-search-results" style="display:none;">
+        <div class="auto-search-card">
+          <span>G2 Rating & Reviews</span>
+          <button class="auto-search-open-btn" id="auto-search-g2-open" title="Open in a new tab">Open &#8599;</button>
+        </div>
+        <div class="auto-search-card">
+          <span>Capterra Rating & Reviews</span>
+          <button class="auto-search-open-btn" id="auto-search-capterra-open" title="Open in a new tab">Open &#8599;</button>
+        </div>
+        <div class="auto-search-card">
+          <span>Demo Video</span>
+          <button class="auto-search-open-btn" id="auto-search-demo-open" title="Open in a new tab">Open &#8599;</button>
+        </div>
+      </div>
+
+      <p class="auto-search-hint" id="auto-search-hint">Enter a company name above, then click "Open" on any result to open it in a new tab. (Embedding search results directly in this panel isn't possible - Google, Bing, and DuckDuckGo all block being displayed in a frame.)</p>
+    </div>
   </div>
 
   <!-- Dynamic Field Mapping Panel -->
