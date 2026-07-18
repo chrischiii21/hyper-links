@@ -124,6 +124,9 @@ const sanitizeResult = document.getElementById('sanitize-result');
 const sanitizePreview = document.getElementById('sanitize-preview');
 const copySanitizeBtn = document.getElementById('copy-sanitize-btn');
 const statusContainer = document.getElementById('status-container');
+const companyBanner = document.getElementById('company-banner');
+const companyBannerText = document.getElementById('company-banner-text');
+const companyBannerCopyBtn = document.getElementById('company-banner-copy-btn');
 const mappingSection = document.getElementById('mapping-section');
 const mappingList = document.getElementById('mapping-list');
 const refreshFieldsBtn = document.getElementById('refresh-fields-btn');
@@ -134,6 +137,10 @@ const spToolbar = document.getElementById('sp-toolbar');
 const spSearch = document.getElementById('sp-search');
 const spClearBtn = document.getElementById('sp-clear-btn');
 const spCompareList = document.getElementById('sp-compare-list');
+
+// Tracks whether a report has been parsed and Section Mapping has content to show, since
+// mapping-section's visibility is gated by both this and the active tab (see switchTab).
+let mappingSectionHasData = false;
 
 // --- Tab Controller ---
 const TABS = {
@@ -153,6 +160,11 @@ function switchTab(mode) {
     TABS[key].button.classList.toggle('active', isActive);
     TABS[key].content.classList.toggle('active', isActive);
   });
+  // Section Mapping lives outside the tab-content divs (it sits below all of them, next to
+  // the Automate Pasting button), so it doesn't get hidden by the toggle above on its own -
+  // it's only ever relevant to the Ingest tab, so tie its visibility to both the active tab
+  // and whether a report has actually been parsed yet.
+  mappingSection.style.display = (mode === 'upload' && mappingSectionHasData) ? 'block' : 'none';
 }
 
 // --- Drag & Drop / File Upload Handlers ---
@@ -209,7 +221,7 @@ copySanitizeBtn.addEventListener('click', () => {
 // never does a full page reload) doesn't require a manual "Re-scan Fields" click.
 let autoScanDebounceTimer = null;
 function scheduleAutoScan() {
-  if (!mappingSection || mappingSection.style.display !== 'block') return; // nothing parsed yet
+  if (!mappingSectionHasData) return; // nothing parsed yet
   clearTimeout(autoScanDebounceTimer);
   autoScanDebounceTimer = setTimeout(() => scanPageFields({ silent: true }), 250);
 }
@@ -269,9 +281,46 @@ function showStatus(message, type = 'info') {
   statusContainer.appendChild(card);
 }
 
+// --- Company Banner Helper: kept sticky at the top of the panel so it's always visible
+// which report/company is currently loaded, no matter which tab you're on or how far
+// you've scrolled. Source files are named "<Company Name> - Audit Report.docx" (or
+// similar), so the company name is just whatever comes before the first dash. ---
+function deriveCompanyName(fileName) {
+  const base = fileName.replace(/\.(docx|txt)$/i, '').trim();
+  const beforeDash = base.split(/\s*[-–—]\s*/)[0].trim();
+  return beforeDash || base;
+}
+
+function setCompanyBanner(fileName) {
+  const name = deriveCompanyName(fileName);
+  companyBannerText.textContent = name;
+  companyBanner.style.display = name ? 'flex' : 'none';
+  chrome.storage.local.set({ lastCompanyName: name });
+}
+
+companyBannerCopyBtn.addEventListener('click', () => {
+  const name = companyBannerText.textContent;
+  if (!name) return;
+  navigator.clipboard.writeText(name).then(() => {
+    companyBannerCopyBtn.classList.add('copied');
+    setTimeout(() => companyBannerCopyBtn.classList.remove('copied'), 800);
+  });
+});
+
+// Restore the last known company name across panel close/reopen, same as the Compare
+// tab's restored report below - this one just isn't tab-specific.
+chrome.storage.local.get('lastCompanyName', (data) => {
+  if (data && data.lastCompanyName) {
+    companyBannerText.textContent = data.lastCompanyName;
+    companyBanner.style.display = 'flex';
+  }
+});
+
 // --- Parse Core: File Ingestion ---
 async function handleFile(file) {
   showStatus('Ingesting and processing file...', 'info');
+  setCompanyBanner(file.name);
+  mappingSectionHasData = false;
   mappingSection.style.display = 'none';
 
   try {
@@ -603,6 +652,7 @@ function processDocxHtml(htmlContent) {
 // --- Ingestion Pipeline: Pasted text parsing (Matches api/extract-paste.ts) ---
 async function handlePastedText(text) {
   showStatus('Processing report text...', 'info');
+  mappingSectionHasData = false;
   mappingSection.style.display = 'none';
 
   try {
@@ -1620,6 +1670,7 @@ function scanPageFields(opts = {}) {
 // --- Render Matchings UI with Smart Heuristics ---
 function renderMappingUI() {
   mappingList.innerHTML = '';
+  mappingSectionHasData = true;
   mappingSection.style.display = 'block';
 
   parsedSections.forEach((section, index) => {
@@ -1996,6 +2047,7 @@ chrome.storage.local.get('lastAuditCompare', (data) => {
 async function handleAuditReportFile(file) {
   const fileName = file.name.toLowerCase();
   showStatus('Parsing audit report...', 'info');
+  setCompanyBanner(file.name);
 
   try {
     if (fileName.endsWith('.docx')) {

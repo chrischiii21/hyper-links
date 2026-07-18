@@ -36,9 +36,18 @@
     </button>
   </div>
 
-  <!-- Status Card: kept pinned to the top so a result is never scrolled out of view,
-       no matter how far down a long report list you're scrolled. -->
-  <div class="status-container" id="status-container"></div>
+  <!-- Sticky Header Group: company banner + status card both stay pinned to the top so
+       you always know which report you're working on and a result is never scrolled out
+       of view, no matter how far down a long report list you're scrolled. -->
+  <div class="sticky-top" id="sticky-top">
+    <div class="company-banner" id="company-banner" style="display:none;">
+      <span class="company-banner-text" id="company-banner-text"></span>
+      <button class="company-banner-copy-btn" id="company-banner-copy-btn" title="Copy company name">
+        <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="12" height="12"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2M9 2h6v4H9z"/></svg>
+      </button>
+    </div>
+    <div class="status-container" id="status-container"></div>
+  </div>
 
   <!-- Ingestion Inboxes -->
   <div id="upload-tab-content" class="tab-content active">

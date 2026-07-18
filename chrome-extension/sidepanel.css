@@ -280,14 +280,68 @@ header {
   color: var(--border-hover);
 }
 
-.status-container {
+.sticky-top {
   position: sticky;
   top: 0;
   z-index: 20;
+  background-color: var(--bg-primary);
+}
+
+.company-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.company-banner::before {
+  content: '🏢';
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.company-banner-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-banner-copy-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.company-banner-copy-btn:hover {
+  color: var(--text-primary);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.company-banner-copy-btn.copied {
+  color: var(--success);
+}
+
+.status-container {
   margin-bottom: 12px;
   padding-top: 8px;
   padding-bottom: 4px;
-  background-color: var(--bg-primary);
 }
 
 .status-container:empty {
