@@ -1,6 +1,7 @@
 ---
-import RichTextCopier from '../components/RichTextCopier';
 import ReportProcessor from '../components/ReportProcessor';
+import LinkExtractor from '../components/LinkExtractor';
+import SanitizeBullets from '../components/SanitizeBullets';
 import ChangelogBanner from '../components/ChangelogBanner';
 import '../styles/global.css';
 
@@ -28,29 +29,40 @@ try {
 
 <script>
 	// Handle view switching with premium styles
-	const copierBtn = document.getElementById('view-copier');
-	const processorBtn = document.getElementById('view-processor');
-	const copierView = document.getElementById('copier-view');
-	const processorView = document.getElementById('processor-view');
+	const tabs = [
+		{ button: 'view-processor', view: 'processor-view' },
+		{ button: 'view-linkextractor', view: 'linkextractor-view' },
+		{ button: 'view-sanitize', view: 'sanitize-view' }
+	];
 
-	const setActive = (active: HTMLElement, inactive: HTMLElement) => {
-		active.classList.add('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-100');
-		active.classList.remove('text-slate-500', 'hover:text-slate-900', 'hover:bg-white/50');
-		
-		inactive.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-100');
-		inactive.classList.add('text-slate-500', 'hover:text-slate-900', 'hover:bg-white/50');
+	const activate = (button: HTMLElement) => {
+		button.classList.add('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-100');
+		button.classList.remove('text-slate-500', 'hover:text-slate-900', 'hover:bg-white/50');
 	};
 
-	copierBtn?.addEventListener('click', () => {
-		copierView?.classList.remove('hidden');
-		processorView?.classList.add('hidden');
-		if (copierBtn && processorBtn) setActive(copierBtn, processorBtn);
-	});
+	const deactivate = (button: HTMLElement) => {
+		button.classList.remove('bg-indigo-600', 'text-white', 'shadow-lg', 'shadow-indigo-100');
+		button.classList.add('text-slate-500', 'hover:text-slate-900', 'hover:bg-white/50');
+	};
 
-	processorBtn?.addEventListener('click', () => {
-		processorView?.classList.remove('hidden');
-		copierView?.classList.add('hidden');
-		if (processorBtn && copierBtn) setActive(processorBtn, copierBtn);
+	const switchTo = (targetButtonId: string) => {
+		tabs.forEach(({ button, view }) => {
+			const buttonEl = document.getElementById(button);
+			const viewEl = document.getElementById(view);
+			if (!buttonEl || !viewEl) return;
+
+			if (button === targetButtonId) {
+				viewEl.classList.remove('hidden');
+				activate(buttonEl);
+			} else {
+				viewEl.classList.add('hidden');
+				deactivate(buttonEl);
+			}
+		});
+	};
+
+	tabs.forEach(({ button }) => {
+		document.getElementById(button)?.addEventListener('click', () => switchTo(button));
 	});
 </script>
 
@@ -60,7 +72,7 @@ try {
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="viewport" content="width=device-width" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Rich Text Copier & Report Processor</title>
+		<title>Hyperlinks - File Ingestion, Link Extractor & Sanitize Bullets</title>
     <meta name="description" content="Professional tools for link extraction, bullet sanitization, and research report processing." />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -81,30 +93,40 @@ try {
 				</div>
 				
 				<div class="flex items-center gap-1 bg-slate-900/5 p-1 rounded-xl border border-slate-900/5">
-					<button 
-						id="view-copier"
+					<button
+						id="view-processor"
 						class="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-300 bg-indigo-600 text-white shadow-lg shadow-indigo-100 flex items-center gap-2 premium-button"
 					>
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/></svg>
-						Text Copier
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+						File Ingestion
 					</button>
-					<button 
-						id="view-processor"
+					<button
+						id="view-linkextractor"
 						class="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-300 text-slate-500 hover:text-slate-900 hover:bg-white/50 flex items-center gap-2 premium-button"
 					>
-						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-						Report Processor
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+						Link Extractor
+					</button>
+					<button
+						id="view-sanitize"
+						class="px-5 py-2 rounded-lg text-xs font-bold transition-all duration-300 text-slate-500 hover:text-slate-900 hover:bg-white/50 flex items-center gap-2 premium-button"
+					>
+						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+						Sanitize Bullets
 					</button>
 				</div>
 			</div>
 		</nav>
 
-		<main class="pb-20">
-			<div id="copier-view">
-				<RichTextCopier client:load />
-			</div>
-			<div id="processor-view" class="hidden">
+		<main class="pt-14 pb-20">
+			<div id="processor-view">
 				<ReportProcessor client:load />
+			</div>
+			<div id="linkextractor-view" class="hidden">
+				<LinkExtractor client:load />
+			</div>
+			<div id="sanitize-view" class="hidden">
+				<SanitizeBullets client:load />
 			</div>
 		</main>
 

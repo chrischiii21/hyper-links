@@ -232,7 +232,7 @@ export const POST: APIRoute = async ({ request }) => {
         );
         if (matchesMainTitle) return;
 
-        const h2Html = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
+        const h2Html = `<h2 data-subheader="true" style="font-weight: 300; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${innerText}</span></h2>`;
         
         if (['p', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'em', 'i', 'strong', 'b'].includes(el.tagName)) {
           if (remainingText && remainingText.trim().length > 0) {
@@ -320,7 +320,7 @@ export const POST: APIRoute = async ({ request }) => {
         if (compEntries.length > 0) {
           let listHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
           compEntries.forEach(entry => {
-            listHtml += `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${entry.title}:</strong> ${entry.body}</li>`;
+            listHtml += `<li style="margin-bottom: 0.5em; line-height: 1.5;"><strong>${entry.title}:</strong> ${entry.body}</li>`;
           });
           listHtml += '</ul>';
           
@@ -489,6 +489,15 @@ export const POST: APIRoute = async ({ request }) => {
         bodyHtml = bodyHtml.replace(/%%COMPANY_OVERVIEW_PLACEHOLDER%%/g, 'Value Proposition');
       }
 
+      // Prepend section title as H2 if not already starting with a heading
+      const $sec = cheerio.load(bodyHtml, null, false);
+      const firstEl = $sec.root().children().first();
+      const startsWithHeading = firstEl.length > 0 && /^h[1-4]$/i.test(firstEl[0].tagName);
+      if (!startsWithHeading) {
+        $sec.root().prepend(`<h2 style="font-weight: 300; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.5em;"><span style="font-weight: 300;">${title}</span></h2>`);
+        bodyHtml = $sec.html() || '';
+      }
+
       // SPECIAL CRITERIA: For Executive Summary (index 0), transform all H2 sub-headers into bullet points
       if (index === 0) {
         const $es = cheerio.load(bodyHtml, null, false);
@@ -515,7 +524,7 @@ export const POST: APIRoute = async ({ request }) => {
                 let cleanValue = $val.html() || '';
                 cleanValue = cleanValue.replace(/^[•\-\u2022\u2013\u2014\s\t*:]+/, '').trim();
                 
-                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${cleanKey}:</strong> ${cleanValue}</li>`);
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5;"><strong>${cleanKey}:</strong> ${cleanValue}</li>`);
               } else if (keyText || valueText) {
                 const targetHtml = keyText ? $es(cells[0]).html() || '' : valueHtml;
                 const $val = cheerio.load(targetHtml, null, false);
@@ -525,7 +534,7 @@ export const POST: APIRoute = async ({ request }) => {
                 });
                 let cleanHtml = $val.html() || '';
                 cleanHtml = cleanHtml.replace(/^[•\-\u2022\u2013\u2014\s\t*:]+/, '').trim();
-                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${cleanHtml}</li>`);
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5;">${cleanHtml}</li>`);
               }
             } else if (cells.length === 1) {
               let cellHtml = $es(cells[0]).html() || '';
@@ -537,13 +546,13 @@ export const POST: APIRoute = async ({ request }) => {
               let cleanHtml = $val.html() || '';
               cleanHtml = cleanHtml.replace(/^[•\-\u2022\u2013\u2014\s\t*:]+/, '').trim();
               if (cleanHtml) {
-                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${cleanHtml}</li>`);
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5;">${cleanHtml}</li>`);
               }
             } else if (cells.length > 2) {
               const firstCellText = $es(cells[0]).text().trim();
               let cleanKey = firstCellText.replace(/:$/, '').trim();
               
-              const remainingHtmlParts: string[] = [];
+              const remainingHtmlParts = [];
               cells.slice(1).each((_, cell) => {
                 let cellHtml = $es(cell).html() || '';
                 const $val = cheerio.load(cellHtml, null, false);
@@ -560,11 +569,11 @@ export const POST: APIRoute = async ({ request }) => {
               
               const remainingHtml = remainingHtmlParts.join(' - ');
               if (cleanKey && remainingHtml) {
-                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${cleanKey}:</strong> ${remainingHtml}</li>`);
+                listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5;"><strong>${cleanKey}:</strong> ${remainingHtml}</li>`);
               } else {
                 const combined = [cleanKey, remainingHtml].filter(Boolean).join(' - ');
                 if (combined) {
-                  listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${combined}</li>`);
+                  listItems.push(`<li style="margin-bottom: 0.5em; line-height: 1.5;">${combined}</li>`);
                 }
               }
             }
@@ -598,7 +607,7 @@ export const POST: APIRoute = async ({ request }) => {
           }
           
           const listItemHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
-            <li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${h2Text}:</strong> ${combinedBody}</li>
+            <li style="margin-bottom: 0.5em; line-height: 1.5;"><strong>${h2Text}:</strong> ${combinedBody}</li>
           </ul>`;
           $h2.replaceWith(listItemHtml);
         });
@@ -698,6 +707,67 @@ export const POST: APIRoute = async ({ request }) => {
           return valueHtml;
         };
 
+        // Some source reports dump every Executive Summary category onto a single bullet
+        // instead of one bullet per category (e.g. "Executive Summary: Company Overview:
+        // ... Product Overview: ... Business Model: ..."). The rest of this pipeline only
+        // ever looks at the FIRST colon in a bullet, so without this the whole blob gets
+        // crammed into one bullet and then mislabeled by the auto-title fallback below.
+        // Detect blocks with 2+ recognized inline labels and split them apart first.
+        const EXEC_LABEL_GROUPS = [
+          { title: 'Company Overview', pattern: 'Value Proposition|Company Overview' },
+          { title: 'Product Overview', pattern: 'Product Offering|Product Overview' },
+          { title: 'Business Model', pattern: 'Business Model' },
+          { title: 'Customer Overview', pattern: 'Customer Profiles?|Customer Overview' },
+          { title: 'Customer Feedback & Testimonials', pattern: 'Customer Feedback(?:\\s*(?:&|and)\\s*Testimonials)?' },
+          { title: 'Competitive Landscape', pattern: 'Competitive Landscape' },
+          { title: 'Leadership Team', pattern: 'Leadership(?:\\s*Team)?' },
+          { title: 'Sales & Go-To-Market', pattern: 'Sales(?:\\s*(?:&|and)\\s*Go[- ]?to[- ]?Market)?' },
+          { title: 'Research & Development', pattern: '(?:Research(?:\\s*(?:&|and)\\s*Development)?|R\\s*&\\s*D)' },
+          { title: 'Market Definition', pattern: 'Market(?:\\s*Definition)?' }
+        ];
+        const execLabelRegex = new RegExp(`(${EXEC_LABEL_GROUPS.map(g => g.pattern).join('|')})\\s*:`, 'gi');
+
+        $es('p, li').each((_, el) => {
+          const $el = $es(el);
+          const text = $el.text().trim();
+          if (!text) return;
+
+          const matches: { index: number; length: number; title: string }[] = [];
+          execLabelRegex.lastIndex = 0;
+          let labelMatch;
+          while ((labelMatch = execLabelRegex.exec(text)) !== null) {
+            const matchedLabel = labelMatch[1];
+            const group = EXEC_LABEL_GROUPS.find(g => new RegExp(`^(?:${g.pattern})$`, 'i').test(matchedLabel));
+            if (group) {
+              matches.push({ index: labelMatch.index, length: labelMatch[0].length, title: group.title });
+            }
+          }
+
+          // A single recognized label is the normal case, handled fine by the existing logic below.
+          if (matches.length < 2) return;
+
+          const preambleRaw = text.substring(0, matches[0].index).trim();
+          const preambleNormalized = preambleRaw.replace(/[:\-–—\s]+$/, '').trim().toLowerCase();
+          const isNoisePreamble = !preambleRaw || preambleNormalized === 'executive summary' || preambleRaw.length < 3;
+
+          const segments: { title: string; content: string }[] = [];
+          for (let i = 0; i < matches.length; i++) {
+            const start = matches[i].index + matches[i].length;
+            const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+            let content = text.substring(start, end).trim();
+            if (i === 0 && !isNoisePreamble) {
+              content = `${preambleRaw} ${content}`.trim();
+            }
+            if (content) segments.push({ title: matches[i].title, content });
+          }
+          if (segments.length < 2) return;
+
+          const newListHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">${segments
+            .map(seg => `<li style="margin-bottom: 0.5em; line-height: 1.5;"><strong>${seg.title}:</strong> ${seg.content}</li>`)
+            .join('')}</ul>`;
+          $el.replaceWith(newListHtml);
+        });
+
         // Preprocess any paragraphs in Executive Summary starting with a bullet point character into list items
         let currentUl: any = null;
         $es('p, div').each((_, el) => {
@@ -724,8 +794,8 @@ export const POST: APIRoute = async ({ request }) => {
             }
             
             const liHtml = canonicalTitle 
-              ? `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${canonicalTitle}:</strong> ${valueHtml.trim()}</li>`
-              : `<li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;">${valueHtml.trim()}</li>`;
+              ? `<li style="margin-bottom: 0.5em; line-height: 1.5;"><strong>${canonicalTitle}:</strong> ${valueHtml.trim()}</li>`
+              : `<li style="margin-bottom: 0.5em; line-height: 1.5;">${valueHtml.trim()}</li>`;
             
             const $li = $es(liHtml);
             if (!currentUl) {
@@ -855,7 +925,7 @@ export const POST: APIRoute = async ({ request }) => {
           }
           
           const listItemHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">
-            <li style="margin-bottom: 0.5em; line-height: 1.5; color: #334155;"><strong>${h2Text}:</strong> ${combinedBody}</li>
+            <li style="margin-bottom: 0.5em; line-height: 1.5;"><strong>${h2Text}:</strong> ${combinedBody}</li>
           </ul>`;
           $h2.replaceWith(listItemHtml);
         });
@@ -1003,10 +1073,10 @@ export const POST: APIRoute = async ({ request }) => {
 
       if (sectionSources.length > 0) {
         const label = sectionSources.length === 1 ? 'Source' : 'Sources';
-        const sourcesH2 = `<h2 data-subheader="true" style="font-weight: 300; color: #1e293b; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${label}</span></h2>`;
+        const sourcesH2 = `<h2 data-subheader="true" style="font-weight: 300; margin-top: 1.5em; margin-bottom: 0.5em; font-size: 1.25em;"><span style="font-weight: 300;">${label}</span></h2>`;
         let listHtml = `<ul style="padding-left: 1.5rem; margin-top: 0.5rem; margin-bottom: 0.5em;">`;
         sectionSources.forEach(link => {
-          listHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: #2563eb; text-decoration: none;">${link.publisher}</a></li>`;
+          listHtml += `<li style="margin-bottom: 0.25em;"><a href="${link.url}" style="color: inherit; text-decoration: underline;">${link.publisher}</a></li>`;
         });
         listHtml += '</ul>';
         $body.root().append(sourcesH2);
@@ -1031,6 +1101,15 @@ export const POST: APIRoute = async ({ request }) => {
         }
       });
 
+      // Strip heading formatting from any headings that ended up inside a table cell
+      // (e.g. a DOCX table cell authored with a Word "Heading" paragraph style, or a
+      // subheader match inside a cell). A section-level heading font size looks broken
+      // sitting inside a table, so unwrap it back to plain inline content.
+      $body('table').find('h1, h2, h3, h4, h5, h6').each((_, hEl) => {
+        const $h = $body(hEl);
+        $h.replaceWith($h.html() || '');
+      });
+
       $body('h1, h2, h3, h4, h5, h6').each((_, el) => {
         // Remove <strong> and <b> wrappers inside the header
         $body(el).find('strong, b').each((_, boldEl) => {
@@ -1042,7 +1121,7 @@ export const POST: APIRoute = async ({ request }) => {
         const fontSize = isMainTitle ? '1.5em' : '1.25em';
         const marginTop = isMainTitle ? '2em' : '1.5em';
         
-        $body(el).attr('style', `font-weight: 300; color: #1e293b; margin-top: ${marginTop}; margin-bottom: 0.5em; font-size: ${fontSize};`);
+        $body(el).attr('style', `font-weight: 300; margin-top: ${marginTop}; margin-bottom: 0.5em; font-size: ${fontSize};`);
 
         // Remove <em> and <i> tags inside headers too
         $body(el).find('em, i').each((_, italicEl) => {

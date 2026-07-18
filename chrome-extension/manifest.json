@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Hyperlinks Auto-Paster",
+  "version": "1.0.0",
+  "description": "Extracts sections from DOCX/text reports client-side and automates pasting them into fields on the active page.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "clipboardRead",
+    "clipboardWrite"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
