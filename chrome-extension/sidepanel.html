@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hyperlinks Auto-Paster</title>
-  <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="sidepanel.css">
 </head>
 <body>
   <!-- Header -->
@@ -12,23 +12,27 @@
     <div class="logo">H</div>
     <div class="title-container">
       <h1>Hyperlinks Auto-Paster</h1>
-      <p>Automated Research Ingestion & Pasting</p>
+      <p>Research Ingestion, Pasting & Audit Compare</p>
     </div>
   </header>
 
   <!-- Navigation Tabs -->
   <div class="tabs-nav">
-    <button class="tab-btn active" id="tab-upload">
+    <button class="tab-btn active" id="tab-upload" title="File Ingestion">
       <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="13" height="13"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
-      File Ingestion
+      <span class="tab-label">Ingest</span>
     </button>
-    <button class="tab-btn" id="tab-paste">
+    <button class="tab-btn" id="tab-paste" title="Link Extractor">
       <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="13" height="13"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-      Link Extractor
+      <span class="tab-label">Links</span>
     </button>
-    <button class="tab-btn" id="tab-sanitize">
+    <button class="tab-btn" id="tab-sanitize" title="Sanitize Bullets">
       <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="13" height="13"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
-      Sanitize Bullets
+      <span class="tab-label">Sanitize</span>
+    </button>
+    <button class="tab-btn" id="tab-compare" title="Audit Compare">
+      <svg stroke="currentColor" fill="none" stroke-width="2.5" viewBox="0 0 24 24" width="13" height="13"><path d="M3 4h18v16H3zM14 4v16"/></svg>
+      <span class="tab-label">Compare</span>
     </button>
   </div>
 
@@ -74,6 +78,22 @@
     </div>
   </div>
 
+  <div id="compare-tab-content" class="tab-content">
+    <div class="upload-zone" id="sp-dropzone">
+      <svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+      <h3>Drop audit report here</h3>
+      <p>.docx or .txt - reads the "Rebuilt Metadata Tag Set (post-audit)" section</p>
+      <input type="file" id="sp-file-input" accept=".docx,.txt">
+    </div>
+
+    <div class="compare-toolbar" id="sp-toolbar" style="display:none;">
+      <input type="text" id="sp-search" placeholder="Filter fields... (e.g. gartner, g2, industry)">
+      <button class="btn-clear" id="sp-clear-btn" title="Clear loaded report">&#10005;</button>
+    </div>
+
+    <div id="sp-compare-list"></div>
+  </div>
+
   <!-- Status Card -->
   <div class="status-container" id="status-container"></div>
 
@@ -86,9 +106,9 @@
         Re-scan Fields
       </button>
     </div>
-    
+
     <div class="mapping-container" id="mapping-list">
-      <!-- Generated dynamically by popup.js -->
+      <!-- Generated dynamically by sidepanel.js -->
     </div>
 
     <!-- Master Trigger Button -->
@@ -102,6 +122,6 @@
   <script src="lib/mammoth.browser.min.js"></script>
   <script src="lib/marked.umd.js"></script>
   <script src="lib/linkUtils.js"></script>
-  <script src="popup.js"></script>
+  <script src="sidepanel.js"></script>
 </body>
 </html>

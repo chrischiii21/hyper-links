@@ -106,9 +106,11 @@ let pageFields = [];
 const tabUpload = document.getElementById('tab-upload');
 const tabPaste = document.getElementById('tab-paste');
 const tabSanitize = document.getElementById('tab-sanitize');
+const tabCompare = document.getElementById('tab-compare');
 const uploadContent = document.getElementById('upload-tab-content');
 const pasteContent = document.getElementById('paste-tab-content');
 const sanitizeContent = document.getElementById('sanitize-tab-content');
+const compareContent = document.getElementById('compare-tab-content');
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
 const linkExtractorInput = document.getElementById('link-extractor-input');
@@ -126,12 +128,19 @@ const mappingSection = document.getElementById('mapping-section');
 const mappingList = document.getElementById('mapping-list');
 const refreshFieldsBtn = document.getElementById('refresh-fields-btn');
 const autoPasteBtn = document.getElementById('auto-paste-btn');
+const spDropzone = document.getElementById('sp-dropzone');
+const spFileInput = document.getElementById('sp-file-input');
+const spToolbar = document.getElementById('sp-toolbar');
+const spSearch = document.getElementById('sp-search');
+const spClearBtn = document.getElementById('sp-clear-btn');
+const spCompareList = document.getElementById('sp-compare-list');
 
 // --- Tab Controller ---
 const TABS = {
   upload: { button: tabUpload, content: uploadContent },
   paste: { button: tabPaste, content: pasteContent },
-  sanitize: { button: tabSanitize, content: sanitizeContent }
+  sanitize: { button: tabSanitize, content: sanitizeContent },
+  compare: { button: tabCompare, content: compareContent }
 };
 
 Object.keys(TABS).forEach(mode => {
@@ -192,6 +201,39 @@ sanitizeBtn.addEventListener('click', () => {
 
 copySanitizeBtn.addEventListener('click', () => {
   copyRichHtmlToClipboard(sanitizedHtml, sanitizedText, 'Sanitized bullets copied to clipboard!');
+});
+
+// --- Automatic page-change detection ---
+// Keeps the Section Mapping field list in sync with whatever page currently has focus,
+// so switching tabs (or switching records inside a single-page app like Airtable, which
+// never does a full page reload) doesn't require a manual "Re-scan Fields" click.
+let autoScanDebounceTimer = null;
+function scheduleAutoScan() {
+  if (!mappingSection || mappingSection.style.display !== 'block') return; // nothing parsed yet
+  clearTimeout(autoScanDebounceTimer);
+  autoScanDebounceTimer = setTimeout(() => scanPageFields({ silent: true }), 250);
+}
+
+// Switching to a different browser tab
+chrome.tabs.onActivated.addListener(() => scheduleAutoScan());
+
+// Switching focus between browser windows
+chrome.windows.onFocusChanged.addListener((windowId) => {
+  if (windowId !== chrome.windows.WINDOW_ID_NONE) scheduleAutoScan();
+});
+
+// A full page load/reload finishing in the active tab
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (tab.active && changeInfo.status === 'complete') scheduleAutoScan();
+});
+
+// Single-page apps (Airtable included) swap records/views via history.pushState without a
+// full reload - onUpdated above won't fire for that, so this catches it separately.
+chrome.webNavigation.onHistoryStateUpdated.addListener((details) => {
+  if (details.frameId !== 0) return; // top frame only
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0] && tabs[0].id === details.tabId) scheduleAutoScan();
+  });
 });
 
 // --- Action Listeners ---
@@ -1546,22 +1588,29 @@ function convertHtmlToPlainText(html) {
 }
 
 // --- Query active page fields from content.js ---
-function scanPageFields() {
+function scanPageFields(opts = {}) {
+  const silent = opts.silent === true;
+
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const activeTab = tabs[0];
     if (!activeTab) return;
 
     chrome.tabs.sendMessage(activeTab.id, { action: 'scanFields' }, (response) => {
       if (chrome.runtime.lastError) {
-        console.error(chrome.runtime.lastError);
-        showStatus('Webpage fields could not be scanned. Please navigate to a page containing input fields and reload the page.', 'error');
+        // Auto-triggered rescans fail quietly for ordinary tabs (chrome:// pages, a tab
+        // still mid-navigation, etc.) - only the manual "Re-scan Fields" click should
+        // surface that as an error.
+        if (!silent) {
+          console.error(chrome.runtime.lastError);
+          showStatus('Webpage fields could not be scanned. Please navigate to a page containing input fields and reload the page.', 'error');
+        }
         return;
       }
 
       if (response && response.fields) {
         pageFields = response.fields;
         renderMappingUI();
-      } else {
+      } else if (!silent) {
         showStatus('No editable fields found on the page.', 'error');
       }
     });
@@ -1886,4 +1935,265 @@ async function pasteSingleSection(sectionId, buttonEl) {
     showStatus(`Failed to paste "${section.title}". Try again or paste manually.`, 'error');
   }
   if (buttonEl) buttonEl.disabled = false;
+}
+
+// ============================================================================
+// Audit Compare tab: loads an audit report (.docx/.txt), extracts the
+// "Rebuilt Metadata Tag Set (post-audit)" section, and renders it as a
+// read-only reference list so it can be read side-by-side with Airtable while
+// values are entered manually. This tab never writes to the page - it's a
+// compare/reference tool only, not an auto-fill tool.
+// ============================================================================
+
+spDropzone.addEventListener('click', () => spFileInput.click());
+spDropzone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  spDropzone.classList.add('dragover');
+});
+spDropzone.addEventListener('dragleave', () => {
+  spDropzone.classList.remove('dragover');
+});
+spDropzone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  spDropzone.classList.remove('dragover');
+  const file = e.dataTransfer.files[0];
+  if (file) handleAuditReportFile(file);
+});
+spFileInput.addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (file) handleAuditReportFile(file);
+});
+
+spClearBtn.addEventListener('click', () => {
+  chrome.storage.local.remove('lastAuditCompare');
+  spCompareList.innerHTML = '';
+  spToolbar.style.display = 'none';
+  spSearch.value = '';
+  spFileInput.value = '';
+  statusContainer.innerHTML = '';
+});
+
+spSearch.addEventListener('input', () => {
+  const q = spSearch.value.trim().toLowerCase();
+  document.querySelectorAll('.compare-row').forEach(row => {
+    const match = !q || row.getAttribute('data-search').includes(q);
+    row.style.display = match ? '' : 'none';
+  });
+  document.querySelectorAll('.compare-group').forEach(group => {
+    const anyVisible = Array.from(group.querySelectorAll('.compare-row')).some(r => r.style.display !== 'none');
+    group.style.display = anyVisible ? '' : 'none';
+  });
+});
+
+// Restore the last loaded report, since the panel can be closed/reopened across sessions.
+chrome.storage.local.get('lastAuditCompare', (data) => {
+  if (data && data.lastAuditCompare && data.lastAuditCompare.groups) {
+    renderCompareGroups(data.lastAuditCompare.groups);
+    showStatus(`Restored "${data.lastAuditCompare.fileName}" from your last session.`, 'info');
+  }
+});
+
+async function handleAuditReportFile(file) {
+  const fileName = file.name.toLowerCase();
+  showStatus('Parsing audit report...', 'info');
+
+  try {
+    if (fileName.endsWith('.docx')) {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml({ arrayBuffer });
+      processAuditReportHtml(result.value, file.name);
+    } else if (fileName.endsWith('.txt')) {
+      const text = await file.text();
+      const htmlLines = text.split('\n').map(line => `<p>${escapeHtmlForCompare(line)}</p>`).join('');
+      processAuditReportHtml(htmlLines, file.name);
+    } else {
+      showStatus('Unsupported file format. Please upload a .docx or .txt file.', 'error');
+    }
+  } catch (err) {
+    console.error(err);
+    showStatus('Failed to parse file: ' + err.message, 'error');
+  }
+}
+
+function processAuditReportHtml(html, fileName) {
+  const groups = parseAuditTagSet(html);
+  if (!groups || groups.every(g => g.fields.length === 0)) {
+    showStatus('Could not find a "Rebuilt Metadata Tag Set" section in this document.', 'error');
+    return;
+  }
+  renderCompareGroups(groups);
+  const fieldCount = groups.reduce((sum, g) => sum + g.fields.length, 0);
+  showStatus(`Loaded "${fileName}" - ${fieldCount} fields ready to compare.`, 'success');
+  chrome.storage.local.set({ lastAuditCompare: { groups, fileName, ts: Date.now() } });
+}
+
+/**
+ * Locates the "Rebuilt Metadata Tag Set" (post-audit) section of the report and parses its
+ * bullet lines ("Label: Value · Value") into grouped field rows. Deliberately ignores the
+ * earlier "Extracted Metadata Tag Set" and "Table 1B" sections in the same document - only
+ * the corrected, post-audit values are meant to be compared against Airtable. Stops at the
+ * next numbered top-level section heading (e.g. "5. Source & Hyperlink Registry").
+ */
+function parseAuditTagSet(htmlContent) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(htmlContent, 'text/html');
+
+  const allEls = Array.from(doc.body.querySelectorAll('*'));
+  const startEl = allEls.find(el => {
+    const text = el.textContent.trim();
+    return /rebuilt metadata tag set/i.test(text) && text.length < 100;
+  });
+
+  if (!startEl) return null;
+
+  // Walk up to the element's top-level position directly under <body>, since headings can
+  // be wrapped in nested spans/strongs depending on how the docx was authored.
+  let topAncestor = startEl;
+  while (topAncestor.parentElement && topAncestor.parentElement !== doc.body) {
+    topAncestor = topAncestor.parentElement;
+  }
+
+  const groups = [];
+  let currentGroup = null;
+
+  function processFieldLine(lineText) {
+    const cleaned = lineText.replace(/^[•●◦▪\-]\s*/, '');
+    const match = /^(.+?):\s*(.*)$/s.exec(cleaned);
+    if (!match) return;
+
+    const label = match[1].trim();
+    let rawValue = match[2].trim();
+
+    let note = null;
+    let flagged = false;
+
+    // Trailing "[HUMAN REVIEW: ...]" / "[omit - ...]" style annotations
+    const bracketMatch = /\[([^\]]+)\]\s*$/.exec(rawValue);
+    if (bracketMatch) {
+      note = bracketMatch[1].trim();
+      rawValue = rawValue.slice(0, bracketMatch.index).trim();
+      flagged = true;
+    }
+
+    if (!rawValue || /^n\/a$/i.test(rawValue)) {
+      flagged = true;
+      if (!note) note = 'no value provided';
+      rawValue = '';
+    }
+
+    const values = rawValue
+      ? rawValue.split('·').map(v => v.trim()).filter(Boolean)
+      : [];
+
+    if (!currentGroup) {
+      currentGroup = { title: 'General', fields: [] };
+      groups.push(currentGroup);
+    }
+    currentGroup.fields.push({ label, values, note, flagged });
+  }
+
+  let node = topAncestor.nextElementSibling;
+  while (node) {
+    const text = node.textContent.trim();
+
+    // Stop at the next numbered top-level section (e.g. "5. Source & Hyperlink Registry")
+    if (/^\d+\.\s/.test(text)) break;
+
+    const tag = node.tagName.toLowerCase();
+
+    if (tag === 'ul' || tag === 'ol') {
+      Array.from(node.children).forEach(li => processFieldLine(li.textContent.trim()));
+    } else if (tag === 'li') {
+      processFieldLine(text);
+    } else if (text.includes(':')) {
+      processFieldLine(text);
+    } else if (text.length > 0 && text.length < 60) {
+      currentGroup = { title: text, fields: [] };
+      groups.push(currentGroup);
+    }
+
+    node = node.nextElementSibling;
+  }
+
+  return groups;
+}
+
+function renderCompareGroups(groups) {
+  spCompareList.innerHTML = '';
+  spToolbar.style.display = 'flex';
+
+  const nonEmptyGroups = groups.filter(g => g.fields.length > 0);
+  if (nonEmptyGroups.length === 0) {
+    spCompareList.innerHTML = '<p class="empty-hint">No fields found under the "Rebuilt Metadata Tag Set" section.</p>';
+    return;
+  }
+
+  nonEmptyGroups.forEach(group => {
+    const groupEl = document.createElement('div');
+    groupEl.className = 'compare-group';
+
+    const titleEl = document.createElement('h3');
+    titleEl.className = 'compare-group-title';
+    titleEl.textContent = group.title;
+    groupEl.appendChild(titleEl);
+
+    group.fields.forEach(field => {
+      const row = document.createElement('div');
+      row.className = 'compare-row' + (field.flagged ? ' flagged' : '');
+      row.setAttribute('data-search', field.label.toLowerCase());
+
+      const labelEl = document.createElement('div');
+      labelEl.className = 'compare-label';
+      labelEl.textContent = field.label;
+
+      const valueEl = document.createElement('div');
+      valueEl.className = 'compare-value';
+
+      if (field.values.length > 0) {
+        field.values.forEach(v => {
+          const chip = document.createElement('span');
+          chip.className = 'value-chip';
+          chip.textContent = v;
+          valueEl.appendChild(chip);
+        });
+      } else {
+        const empty = document.createElement('span');
+        empty.className = 'value-empty';
+        empty.textContent = 'No value';
+        valueEl.appendChild(empty);
+      }
+
+      if (field.note) {
+        const noteEl = document.createElement('span');
+        noteEl.className = 'value-note';
+        noteEl.textContent = `⚠ ${field.note}`;
+        valueEl.appendChild(noteEl);
+      }
+
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'compare-copy-btn';
+      copyBtn.title = 'Copy value';
+      copyBtn.textContent = '⧉';
+      copyBtn.disabled = field.values.length === 0;
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(field.values.join(', ')).then(() => {
+          copyBtn.classList.add('copied');
+          setTimeout(() => copyBtn.classList.remove('copied'), 800);
+        });
+      });
+
+      row.appendChild(labelEl);
+      row.appendChild(valueEl);
+      row.appendChild(copyBtn);
+      groupEl.appendChild(row);
+    });
+
+    spCompareList.appendChild(groupEl);
+  });
+}
+
+function escapeHtmlForCompare(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
